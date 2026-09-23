@@ -27,6 +27,7 @@ from scipy.ndimage import binary_dilation, distance_transform_edt, minimum_filte
 from shapely.geometry import Polygon
 
 from karesansui import gcode, water
+from karesansui.bonsai import grow, tuft_mesh
 from karesansui.config import poc_garden
 from karesansui.geometry import sand_region
 from karesansui.landscape import LIVING, PRESERVED, WATER, terrain
@@ -98,6 +99,23 @@ def main(pattern: str = "ripples") -> None:
     under = np.where(d <= 3, t.water[ii, jj], np.nan)        # the surface carried 3 mm under the banks
     np.savez_compressed(OUT / "terrain.npz", ground=t.ground.astype(np.float32), zone=t.zone,
                         water=t.water.astype(np.float32), water_ext=under.astype(np.float32))
+
+    # ---- the bonsai grown to fit the model's tree (karesansui.bonsai)
+    def ground_at(x, y):
+        fx = min(max(x - 0.5, 0), t.ground.shape[1] - 1.001)
+        fy = min(max(y - 0.5, 0), t.ground.shape[0] - 1.001)
+        j, i = int(fx), int(fy)
+        u, v = fx - j, fy - i
+        G = t.ground
+        return float((G[i, j] * (1 - u) + G[i, j + 1] * u) * (1 - v) + (G[i + 1, j] * (1 - u) + G[i + 1, j + 1] * u) * v)
+    tree_model = grow(g, ground_at)
+    tv, tf = tuft_mesh()
+    np.savez_compressed(OUT / "bonsai.npz",
+                        branch_pts=np.concatenate([b[0] for b in tree_model.branches]).astype(np.float32),
+                        branch_r=np.concatenate([b[1] for b in tree_model.branches]).astype(np.float32),
+                        branch_len=np.array([len(b[0]) for b in tree_model.branches], np.int32),
+                        tufts=tree_model.tuft_array.astype(np.float32), tuft_verts=tv.astype(np.float32),
+                        tuft_faces=tf.astype(np.int32), base=np.array(tree_model.base, np.float32))
 
     # ---- the sand after a simulated cycle, at the simulation's own 0.5 mm
     cfg = SimCfg(dx=0.5)

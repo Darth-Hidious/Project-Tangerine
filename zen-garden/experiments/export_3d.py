@@ -29,6 +29,7 @@ from shapely.ops import unary_union
 from karesansui import gcode, water
 from karesansui.config import poc_garden
 from karesansui.geometry import sand_region, swing_radius
+from karesansui.bonsai import grow
 from karesansui.landscape import terrain
 from karesansui.planner import ArmMachine, build_program
 from karesansui.sim import Bed, SimCfg
@@ -85,6 +86,21 @@ def main() -> dict:
               "zone": b64(t.zone.astype(np.uint8)),
               "water": b64(np.where(np.isnan(reach), -32768, np.round(reach * 10)).astype(np.int16)),
               "wet": b64(wet.astype(np.uint8))}
+
+    # ---- the bonsai, grown to fit the model's tree (the same one the photoreal renderer draws)
+    def ground_at(x, y):
+        fx = min(max(x / TERRAIN_DX - 0.5, 0), t.ground.shape[1] - 1.001)
+        fy = min(max(y / TERRAIN_DX - 0.5, 0), t.ground.shape[0] - 1.001)
+        j, i = int(fx), int(fy)
+        u, v = fx - j, fy - i
+        G = t.ground
+        return float((G[i, j] * (1 - u) + G[i, j + 1] * u) * (1 - v) + (G[i + 1, j] * (1 - u) + G[i + 1, j + 1] * u) * v)
+    tree = grow(g, ground_at)
+    bonsai = {"base": [round(v, 2) for v in tree.base],
+              "pts": b64(np.concatenate([b[0] for b in tree.branches]).astype(np.float32)),
+              "r": b64(np.concatenate([b[1] for b in tree.branches]).astype(np.float32)),
+              "len": [len(b[0]) for b in tree.branches],
+              "tufts": b64(tree.tuft_array.astype(np.float32))}
 
     # ---- sand patterns and programs
     sand = sand_region(g)
@@ -145,6 +161,7 @@ def main() -> dict:
         "patterns": patterns,
         "stones": [{"name": s.name, "outline": [list(p) for p in s.outline], "height": s.height - S} for s in g.stones],
         "features": feats,
+        "bonsai": bonsai,
         "cascades": cascades,
         "lanterns": [{"name": l.name, "xy": list(l.xy), "radius": l.radius, "height": l.height,
                       "light": l.light_height, "lumens": l.lumens, "cct": l.cct} for l in g.lanterns],

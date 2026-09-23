@@ -426,8 +426,7 @@ const M = {
   granite: new THREE.MeshStandardMaterial({ color: 0xcfcac0, map: speckTex, roughness: 0.9, normalMap: rockNormal, normalScale: new THREE.Vector2(0.6, 0.6) }),
   stone: new THREE.MeshStandardMaterial({ color: 0xffffff, map: speckTex, roughness: 0.7, normalMap: rockNormal, normalScale: new THREE.Vector2(0.9, 0.9), vertexColors: true }),
   rock: new THREE.MeshStandardMaterial({ color: 0xffffff, map: speckTex, roughness: 0.88, normalMap: rockNormal, normalScale: new THREE.Vector2(0.9, 0.9), vertexColors: true }),
-  bark: new THREE.MeshStandardMaterial({ color: 0x5a4636, roughness: 0.95, normalMap: rockNormal, normalScale: new THREE.Vector2(1.2, 1.2) }),
-  leaf: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.78, normalMap: normalFromHeight(128, (u, v) => periodic(u, v, 40, 3.3) + 0.5 * periodic(u, v, 90, 1.1), 2.5), normalScale: new THREE.Vector2(1.2, 1.2) }),
+  bark: new THREE.MeshStandardMaterial({ color: 0x4a3526, roughness: 0.95, normalMap: rockNormal, normalScale: new THREE.Vector2(1.4, 1.4) }),
   windowGlow: new THREE.MeshStandardMaterial({ color: 0x241406, emissive: kelvin(2200), emissiveIntensity: 3 }),
 };
 for (const t of [walnutMap, oakMap, cedarMap]) t.repeat.set(1, 1);
@@ -837,82 +836,68 @@ for (const l of G.lanterns) {
   world.add(light); lanternLights.push(light);
 }
 
-// ------------------------------------------------------------------ the bonsai
+// ------------------------------------------------------------------ the bonsai (grown by karesansui.bonsai)
 const TREE = byKind("tree")[0], POT = byKind("pot")[0];
 const treeGroup = new THREE.Group(); world.add(treeGroup);
 const potC = POT.outline.reduce((a, [x, y]) => [a[0] + x / POT.outline.length, a[1] + y / POT.outline.length], [0, 0]);
-const canopyC = TREE.outline.reduce((a, [x, y]) => [a[0] + x / TREE.outline.length, a[1] + y / TREE.outline.length], [0, 0]);
-const trunkBase = V(potC[0], potC[1], gAt(potC[0], potC[1]) - 4);
-treeGroup.position.copy(trunkBase);
-function taperedTube(points, r0, r1, radial = 10, seg = 40) {
-  const curve = new THREE.CatmullRomCurve3(points), frames = curve.computeFrenetFrames(seg, false);
-  const pos = [], idx = [], uv = [];
-  for (let i = 0; i <= seg; i++) {
-    const s = i / seg, p = curve.getPointAt(s), N = frames.normals[i], B = frames.binormals[i];
-    const r = r0 + (r1 - r0) * Math.pow(s, 0.8);
-    for (let k = 0; k <= radial; k++) {
-      const a = (k / radial) * Math.PI * 2, bump = 1 + 0.12 * noise3(p.x * 0.08, p.y * 0.08 + a, p.z * 0.08);
-      const v = N.clone().multiplyScalar(Math.cos(a) * r * bump).add(B.clone().multiplyScalar(Math.sin(a) * r * bump)).add(p);
-      pos.push(v.x, v.y, v.z); uv.push(k / radial * 2, s * 4);
-    }
-  }
-  for (let i = 0; i < seg; i++) for (let k = 0; k < radial; k++) {
-    const a = i * (radial + 1) + k, b = a + radial + 1; idx.push(a, b, a + 1, a + 1, b, b + 1);
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
-  g.setIndex(idx); g.computeVertexNormals();
-  return g;
-}
+M.needle = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, side: THREE.DoubleSide });
 {
-  const H = TREE.height, r = rng(42);
-  // canopy centre relative to the trunk base, in the tree group's frame (three axes)
-  const cv = V(canopyC[0], canopyC[1], 0).sub(V(potC[0], potC[1], 0));
-  const trunkPts = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(8, H * 0.18, 4), new THREE.Vector3(-6, H * 0.36, -4),
-    new THREE.Vector3(cv.x * 0.5 + 10, H * 0.55, cv.z * 0.5), new THREE.Vector3(cv.x * 0.8, H * 0.74, cv.z * 0.7 - 6), new THREE.Vector3(cv.x, H * 0.86, cv.z)];
-  const trunk = new THREE.Mesh(taperedTube(trunkPts, H * 0.075, H * 0.022, 14, 60), M.bark); trunk.castShadow = true; treeGroup.add(trunk);
-  const g0 = gAt(potC[0], potC[1]) - 4;                   // the group's origin, mm above the sand
-  const soil = (lx, lz) => gAt(potC[0] + lx, potC[1] - lz) - g0;   // ground height in the group's frame
-  for (let k = 0; k < 6; k++) {       // surface roots (nebari): short flares that dive into the moss
-    const a = k / 6 * Math.PI * 2 + r() * 0.6, L = H * (0.075 + r() * 0.04), cx = Math.cos(a), cz = Math.sin(a);
-    const root = new THREE.Mesh(taperedTube([new THREE.Vector3(0, H * 0.035, 0),
-      new THREE.Vector3(cx * L * 0.55, soil(cx * L * 0.55, cz * L * 0.55) + 1.0, cz * L * 0.55),
-      new THREE.Vector3(cx * L, soil(cx * L, cz * L) - 4, cz * L)], H * 0.04, H * 0.008, 10, 14), M.bark);
-    root.castShadow = true; treeGroup.add(root);
+  const B = G.bonsai, base = V(...B.base);
+  treeGroup.position.copy(base);                       // the slider scales the tree about its trunk base
+  const P = b64(B.pts, Float32Array), R = b64(B.r, Float32Array), T = b64(B.tufts, Float32Array);
+  const local = (i) => V(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]).sub(base);
+  // trunk, roots, branches and twigs: tubes along their points, frames carried along the path
+  const pos = [], uv = [], idx = [];
+  let k = 0;
+  for (const n of B.len) {
+    const r0 = R[k], radial = r0 > 8 ? 16 : r0 > 2 ? 8 : 5, start = pos.length / 3;
+    let Nrm = null, run = 0, prev = null;
+    for (let i = 0; i < n; i++) {
+      const p = local(k + i), T3 = local(k + Math.min(i + 1, n - 1)).sub(local(k + Math.max(i - 1, 0))).normalize();
+      if (!Nrm) Nrm = new THREE.Vector3(Math.abs(T3.y) < 0.9 ? 0 : 1, Math.abs(T3.y) < 0.9 ? 1 : 0, 0).cross(T3).normalize();
+      else Nrm.sub(T3.clone().multiplyScalar(Nrm.dot(T3))).normalize();
+      const Bn = T3.clone().cross(Nrm);
+      if (prev) run += p.distanceTo(prev);
+      prev = p;
+      for (let a = 0; a <= radial; a++) {
+        const ang = a / radial * Math.PI * 2, r = R[k + i] * (1 + (r0 > 8 ? 0.08 * noise3(p.x * 0.1, p.y * 0.1 + a, p.z * 0.1) : 0));
+        const v = p.clone().addScaledVector(Nrm, Math.cos(ang) * r).addScaledVector(Bn, Math.sin(ang) * r);
+        pos.push(v.x, v.y, v.z); uv.push(a / radial, run / (2 * Math.PI * Math.max(r0, 0.6)));
+      }
+    }
+    for (let i = 0; i < n - 1; i++) for (let a = 0; a < radial; a++) {
+      const c = start + i * (radial + 1) + a, d = c + radial + 1;
+      idx.push(c, c + 1, d, c + 1, d + 1, d);           // wound so the faces look outwards
+    }
+    k += n;
   }
-  const trunkCurve = new THREE.CatmullRomCurve3(trunkPts);
-  const rx = (Math.max(...TREE.outline.map((p) => p[0])) - Math.min(...TREE.outline.map((p) => p[0]))) / 2;
-  const rz = (Math.max(...TREE.outline.map((p) => p[1])) - Math.min(...TREE.outline.map((p) => p[1]))) / 2;
-  const pads = [];
-  const branchDefs = [[0.38, -2.4, 0.95], [0.46, 0.6, 1.0], [0.55, 2.2, 0.85], [0.63, -0.9, 0.8], [0.7, 1.4, 0.7], [0.78, -2.0, 0.55], [0.84, 0.2, 0.45]];
-  for (const [at, ang, reach] of branchDefs) {
-    const p0 = trunkCurve.getPointAt(at), dirx = Math.cos(ang), dirz = Math.sin(ang);
-    const ex = cv.x + dirx * rx * reach - p0.x * 0.3, ez = cv.z + dirz * rz * reach - p0.z * 0.3;
-    const tip = new THREE.Vector3(ex, p0.y + H * (0.02 + r() * 0.05), ez);
-    const mid = p0.clone().lerp(tip, 0.5); mid.y -= H * 0.04;
-    const br = new THREE.Mesh(taperedTube([p0, mid, tip], H * 0.03 * (1.1 - at), H * 0.007, 8, 18), M.bark); br.castShadow = true; treeGroup.add(br);
-    pads.push({ c: tip.clone().add(new THREE.Vector3(0, H * 0.03, 0)), rx: rx * (0.34 + 0.1 * reach), ry: H * 0.045, rz: rz * (0.34 + 0.1 * reach) });
+  const wood = new THREE.BufferGeometry();
+  wood.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); wood.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  wood.setIndex(idx); wood.computeVertexNormals();
+  const woodMesh = new THREE.Mesh(wood, M.bark); woodMesh.castShadow = woodMesh.receiveShadow = true; treeGroup.add(woodMesh);
+  // needle tufts: a pine shoot, needles radiating along a short stem (one triangle each), lighter at the tips
+  const tp = [], tc = [], r = rng(9);
+  for (let j = 0; j < 26; j++) {
+    const at = 0.45 * Math.pow(j / 26, 0.7), phi = (30 + r() * 45) * Math.PI / 180, az = j * 2.39996, L = 0.55 + r() * 0.3;
+    const d = new THREE.Vector3(Math.sin(phi) * Math.cos(az), Math.cos(phi), Math.sin(phi) * Math.sin(az));
+    const side = new THREE.Vector3(-Math.sin(az), 0, Math.cos(az)).multiplyScalar(0.03);
+    const b = new THREE.Vector3(0, at, 0), tip = b.clone().addScaledVector(d, L);
+    for (const v of [b.clone().sub(side), b.clone().add(side), tip]) tp.push(v.x, v.y, v.z);
+    tc.push(0.72, 0.72, 0.72, 0.72, 0.72, 0.72, 1.12, 1.1, 0.85);
   }
-  pads.push({ c: trunkPts[5].clone().add(new THREE.Vector3(0, H * 0.06, 0)), rx: rx * 0.42, ry: H * 0.06, rz: rz * 0.42 });
-  const clump = new THREE.IcosahedronGeometry(1, 2), cp = clump.attributes.position;
-  for (let v = 0; v < cp.count; v++) {
-    const x = cp.getX(v), y = cp.getY(v), z = cp.getZ(v), f = 1 + 0.3 * fbm(x * 2.2 + 1, y * 2.2, z * 2.2, 3);
-    cp.setXYZ(v, x * f, y * f, z * f);
+  const shoot = new THREE.BufferGeometry();
+  shoot.setAttribute("position", new THREE.Float32BufferAttribute(tp, 3)); shoot.setAttribute("color", new THREE.Float32BufferAttribute(tc, 3));
+  shoot.computeVertexNormals();
+  const count = T.length / 8, tufts = new THREE.InstancedMesh(shoot, M.needle, count);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), tw = new THREE.Quaternion(), sc = new THREE.Vector3(), col = new THREE.Color(), up = new THREE.Vector3(0, 1, 0);
+  for (let i = 0; i < count; i++) {
+    const o = i * 8, axis = new THREE.Vector3(T[o + 3], T[o + 5], -T[o + 4]).normalize();
+    q.setFromUnitVectors(up, axis).multiply(tw.setFromAxisAngle(up, T[o + 7]));
+    m4.compose(V(T[o], T[o + 1], T[o + 2]).sub(base), q, sc.setScalar(T[o + 6]));
+    tufts.setMatrixAt(i, m4);
+    col.setHSL(0.28 + r() * 0.05, 0.4 + r() * 0.15, 0.08 + r() * 0.06); tufts.setColorAt(i, col);
   }
-  clump.computeVertexNormals();
-  const per = 110, blobs = new THREE.InstancedMesh(clump, M.leaf, pads.length * per);
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), col = new THREE.Color();
-  let n = 0;
-  for (const pd of pads) for (let k = 0; k < per; k++) {
-    let x, y, z; do { x = r() * 2 - 1; y = r() * 2 - 1; z = r() * 2 - 1; } while (x * x + y * y + z * z > 1);
-    const size = H * (0.022 + r() * 0.022);
-    s.set(size * (1 + r() * 0.4), size * 0.7, size * (1 + r() * 0.4));
-    q.setFromEuler(new THREE.Euler(r() * 0.6, r() * 6.28, r() * 0.6));
-    m4.compose(new THREE.Vector3(pd.c.x + x * pd.rx, pd.c.y + y * pd.ry, pd.c.z + z * pd.rz), q, s);
-    blobs.setMatrixAt(n, m4);
-    col.setHSL(0.26 + r() * 0.06, 0.5 + r() * 0.15, 0.07 + (y + 1) * 0.045 + r() * 0.035); blobs.setColorAt(n, col); n++;
-  }
-  blobs.castShadow = true; blobs.receiveShadow = true; treeGroup.add(blobs);
+  tufts.castShadow = tufts.receiveShadow = true; treeGroup.add(tufts);
 }
 
 // ------------------------------------------------------------------ the arm

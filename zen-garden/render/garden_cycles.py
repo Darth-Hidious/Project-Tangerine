@@ -9,7 +9,7 @@ height and outline is the model's, and renders it with physically based material
     and brighter preserved moss beyond, on the ground the model computed;
   - water that refracts over a pebbled bed, cascades as aerated sheets with foam;
   - granite lanterns lit by their own 2200 K LEDs, rocks with moss on their crowns, the two stones;
-  - a bonsai with a bark-textured trunk and foliage pads of instanced needle sprays;
+  - the bonsai grown by karesansui.bonsai: plated bark on a tapering trunk, pine shoots on its twigs;
   - the SCARA arm in the pose it holds at the end of its last planned groove.
 
 Every procedural texture is built here from nodes: nothing is downloaded.
@@ -35,10 +35,10 @@ from mathutils import Euler, Vector, noise
 
 MM = 0.001                     # the model is in mm, the scene in metres (for the sky and the lens)
 QUALITY = {                    # moss shoots per mm2, samples, resolution
-    "draft": dict(moss=0.6, samples=16, res=(800, 500), leaves=500),
-    "preview": dict(moss=1.8, samples=48, res=(1440, 900), leaves=1100),
-    "local": dict(moss=2.6, samples=80, res=(1800, 1125), leaves=1600),     # the best a 4-core CPU does in ~5 min
-    "final": dict(moss=4.5, samples=384, res=(2400, 1500), leaves=2200),
+    "draft": dict(moss=0.6, samples=16, res=(800, 500)),
+    "preview": dict(moss=1.8, samples=48, res=(1440, 900)),
+    "local": dict(moss=2.6, samples=80, res=(1800, 1125)),     # the best a 4-core CPU does in ~5 min
+    "final": dict(moss=4.5, samples=384, res=(2400, 1500)),
 }
 
 
@@ -50,6 +50,7 @@ class Garden:
         self.ground, self.zone, self.water, self.water_ext = t["ground"], t["zone"], t["water"], t["water_ext"]
         sd = np.load(folder / "sand.npz")
         self.sand_h, self.sand_mask = sd["h"], sd["mask"]
+        self.bonsai = dict(np.load(folder / "bonsai.npz"))
         self.W, self.D = self.s["tray"]["width"], self.s["tray"]["depth"]
         self.bed, self.wall = self.s["tray"]["bed"], self.s["tray"]["wall"]
 
@@ -491,16 +492,16 @@ def make_materials(q):
         N.set(plates, Scale=4.0, Randomness=0.9)
         vm = N.new("ShaderNodeMix", data_type="VECTOR")
         vm.inputs[0].default_value = 0.25
-        N.link(N.mapping(uv, (6.0, 1.3, 1.0)), N.sock(vm.inputs, "A", "VECTOR"))
+        N.link(N.mapping(uv, (14.0, 4.5, 1.0)), N.sock(vm.inputs, "A", "VECTOR"))
         N.link(warp.outputs["Color"], N.sock(vm.inputs, "B", "VECTOR"))
         N.link(N.sock(vm.outputs, "Result", "VECTOR"), plates.inputs["Vector"])
         edge = plates.outputs["Distance"]                     # 0 in a fissure, rising onto a plate
         plate = N.math("POWER", N.math("MULTIPLY", edge, 6.0, clamp=True), 0.5)
         fine = N.noise(N.mapping(uv, (8.0, 2.0, 1.0)), 12.0, 6.0, 0.62)
         h = N.math("ADD", plate, N.math("MULTIPLY", fine.outputs["Fac"], 0.35))
-        col = N.ramp(plate, [(0.05, (0.012, 0.008, 0.006)), (0.45, (0.09, 0.042, 0.022)), (0.9, (0.15, 0.08, 0.045))])
-        grey = N.math("GREATER_THAN", fine.outputs["Fac"], 0.6)
-        col = N.mix(N.math("MULTIPLY", N.math("MULTIPLY", grey, plate), 0.45), col, (0.16, 0.15, 0.13))
+        col = N.ramp(plate, [(0.05, (0.007, 0.005, 0.004)), (0.45, (0.04, 0.023, 0.014)), (0.9, (0.07, 0.042, 0.027))])
+        grey = N.math("GREATER_THAN", fine.outputs["Fac"], 0.55)
+        col = N.mix(N.math("MULTIPLY", N.math("MULTIPLY", grey, plate), 0.55), col, (0.11, 0.1, 0.09))
         N.link(col, bsdf.inputs["Base Color"])
         N.set(bsdf, Roughness=0.9)
         N.link(N.bump(h, 1.0, 0.004), bsdf.inputs["Normal"])
@@ -508,7 +509,10 @@ def make_materials(q):
 
     def needles(N, bsdf, out):
         info = N.new("ShaderNodeObjectInfo")
-        col = N.ramp(info.outputs["Random"], [(0.0, (0.018, 0.05, 0.012)), (0.6, (0.035, 0.085, 0.02)), (1.0, (0.07, 0.13, 0.03))])
+        gen = N.new("ShaderNodeSeparateXYZ")
+        N.link(N.coords("Generated"), gen.inputs["Vector"])
+        col = N.ramp(info.outputs["Random"], [(0.0, (0.012, 0.035, 0.01)), (0.6, (0.025, 0.06, 0.016)), (1.0, (0.05, 0.1, 0.025))])
+        col = N.mix(N.math("POWER", gen.outputs["Z"], 3.0), col, (0.1, 0.16, 0.04))
         N.link(col, bsdf.inputs["Base Color"])
         N.set(bsdf, Roughness=0.5)
         trans = N.new("ShaderNodeBsdfTranslucent")
@@ -817,93 +821,35 @@ def build_bridge(gd: Garden, M):
                 mesh_object(f"post_{side}_{s}", v, fc, uv=uv, mat=M["cedar"])
 
 
-def build_tree(gd: Garden, M, n_sprays):
-    T = gd.s["tree"]
-    H = T["height"]
-    px, py = T["pot"]
-    canopy = np.array(T["canopy"], float)
-    cc = canopy.mean(0)
-    rx = (canopy[:, 0].max() - canopy[:, 0].min()) / 2
-    ry = (canopy[:, 1].max() - canopy[:, 1].min()) / 2
-    g0 = gd.g(px, py) - 4.0
-    cv = cc - np.array([px, py])
-    P = lambda dx, dy, h: gd.V(px + dx, py + dy, g0 + h)
-    trunk = [P(0, 0, 0), P(8, -4, H * 0.18), P(-6, 4, H * 0.36), P(cv[0] * 0.5 + 10, cv[1] * 0.5, H * 0.55),
-             P(cv[0] * 0.8, cv[1] * 0.7 + 6, H * 0.74), P(cv[0], cv[1], H * 0.86)]
-    path = catmull(trunk, 80)
-    s = np.linspace(0, 1, len(path))
-    radii = (H * 0.075 - (H * 0.075 - H * 0.022) * s ** 0.8) * MM
-    radii[:6] *= 1 + 0.35 * (1 - np.arange(6) / 6) ** 2        # flare at the soil
-    v, f, uv = tube(path, radii, sides=24, bumps=0.12, seed=1.0, lobes=0.09)
-    mesh_object("trunk", v, f, uv=uv, mat=M["bark"])
-    rng = np.random.default_rng(42)
-    for k in range(7):                                          # surface roots following the slope
-        a = k / 7 * 2 * math.pi + rng.uniform(0, 0.6)
-        L = H * rng.uniform(0.075, 0.115)
-        pts = []
-        for t in np.linspace(0, 1, 8):
-            dx, dy = math.cos(a) * L * t, math.sin(a) * L * t
-            pts.append(gd.V(px + dx, py + dy, gd.g(px + dx, py + dy) + H * 0.03 * (1 - t) ** 2 - 3.5 * t))
-        rr = np.linspace(H * 0.035, H * 0.008, 8) * MM
-        v, f, uv = tube(np.array(pts), rr, sides=10, bumps=0.08, seed=k)
-        mesh_object(f"root_{k}", v, f, uv=uv, mat=M["bark"])
-    # branches to the foliage pads
-    trunk_curve = path
-    pads = []
-    defs = [(0.38, -2.4, 0.95), (0.46, 0.6, 1.0), (0.55, 2.2, 0.85), (0.63, -0.9, 0.8), (0.7, 1.4, 0.7), (0.78, -2.0, 0.55), (0.84, 0.2, 0.45)]
-    for at, ang, reach in defs:
-        p0 = np.array(trunk_curve[int(at * (len(trunk_curve) - 1))])
-        tip_xy = np.array([px + cv[0] + math.cos(ang) * rx * reach, py + cv[1] + math.sin(ang) * ry * reach])
-        tip_xy -= (np.array([p0[0] / MM + gd.W / 2, p0[1] / MM + gd.D / 2]) - np.array([px, py])) * 0.3
-        tip = gd.V(tip_xy[0], tip_xy[1], p0[2] / MM + H * rng.uniform(0.02, 0.07))
-        mid = (Vector(p0) + tip) / 2
-        mid.z -= H * 0.04 * MM
-        br = catmull([Vector(p0), mid, tip], 24)
-        rr = np.linspace(H * 0.022 * (1.1 - at), H * 0.006, len(br)) * MM
-        v, f, uv = tube(br, rr, sides=12, bumps=0.1, seed=at * 10, lobes=0.06)
-        mesh_object(f"branch_{at}", v, f, uv=uv, mat=M["bark"])
-        pads.append((np.array(tip) + np.array([0, 0, H * 0.03 * MM]), rx * (0.34 + 0.1 * reach) * MM, ry * (0.34 + 0.1 * reach) * MM, H * 0.045 * MM))
-    top = np.array(trunk_curve[-1])
-    pads.append((top + np.array([0, 0, H * 0.06 * MM]), rx * 0.42 * MM, ry * 0.42 * MM, H * 0.06 * MM))
-    # needle sprays instanced into each pad
-    coll = new_collection("sprays", link=False)
-    for k in range(3):
-        nv, nf = spray_mesh(rng, 18 + 4 * k)
-        ob = mesh_object(f"spray_{k}", nv, nf, mat=M["needles"], coll=coll, smooth=True)
-    points, rot, scale = [], [], []
-    for c, ax, ay, az in pads:
-        for _ in range(n_sprays):
-            while True:
-                q = rng.uniform(-1, 1, 3)
-                if q @ q <= 1 and q[2] > -0.55:
-                    break
-            q *= np.linalg.norm(q) ** -0.45 if np.linalg.norm(q) > 0 else 1   # push towards the surface
-            q = np.clip(q, -1, 1)
-            points.append(c + q * np.array([ax, ay, az]))
-            outward = q / (np.linalg.norm(q) + 1e-9)
-            rot.append((rng.uniform(-0.5, 0.5) + outward[1] * 0.4, rng.uniform(-0.5, 0.5) - outward[0] * 0.4, rng.uniform(0, 2 * math.pi)))
-            scale.append(rng.uniform(0.8, 1.3))
-    cloud = instance_cloud("foliage", np.array(points), np.array(rot), np.array(scale), coll)
-    return cloud
-
-
-def spray_mesh(rng, n):
-    """A short twig with needles fanning forward: one tuft of a pine pad (mm-scale, metres out)."""
-    verts, faces = [], []
-    for k in range(n):
-        yaw = rng.uniform(0, 2 * math.pi)
-        pitch = rng.uniform(0.15, 1.2)
-        L = rng.uniform(5.0, 9.0)
-        base = np.array([rng.uniform(-1.5, 1.5), rng.uniform(-1.5, 1.5), rng.uniform(0, 2)])
-        d = np.array([math.cos(yaw) * math.cos(pitch), math.sin(yaw) * math.cos(pitch), math.sin(pitch)])
-        side = np.cross(d, [0, 0, 1.0])
-        side = side / (np.linalg.norm(side) + 1e-9) * 0.28
-        i = len(verts)
-        tip = base + d * L
-        mid = base + d * L * 0.5 + np.array([0, 0, 0.6])
-        verts += [base - side, base + side, mid + side * 0.8, mid - side * 0.8, tip]
-        faces += [(i, i + 1, i + 2), (i, i + 2, i + 3), (i + 3, i + 2, i + 4)]
-    return np.array(verts) * MM, faces
+def build_tree(gd: Garden, M):
+    """The bonsai grown by karesansui.bonsai: bark-textured wood, one mesh for trunk, roots, branches
+    and twigs, and needle tufts instanced on the twigs."""
+    B = gd.bonsai
+    pts, rad, lens = B["branch_pts"], B["branch_r"], B["branch_len"]
+    verts, faces, uvs, off, k = [], [], [], 0, 0
+    for n in lens:
+        P, R = pts[k:k + n], rad[k:k + n]
+        k += n
+        if n < 2:
+            continue
+        sides = 24 if R[0] > 8 else 12 if R[0] > 2 else 6
+        v, f, uv = tube(np.array([gd.V(*p) for p in P]), R * MM, sides=sides,
+                        bumps=0.12 if R[0] > 8 else 0.06, seed=float(k), lobes=0.09 if R[0] > 8 else 0.0)
+        verts.append(v)
+        faces.append(f + off)
+        uvs.append(uv)
+        off += len(v)
+    mesh_object("bonsai_wood", np.vstack(verts), np.vstack(faces), uv=np.vstack(uvs), mat=M["bark"])
+    coll = new_collection("tuft", link=False)
+    ob = mesh_object("tuft_shape", B["tuft_verts"] * MM, B["tuft_faces"], mat=M["needles"], coll=coll, smooth=True)
+    T = B["tufts"]
+    rot = []
+    for x, y, z, axx, axy, axz, size, twist in T:
+        q = Vector((axx, axy, axz)).to_track_quat("Z", "Y")
+        q = q @ Euler((0, 0, float(twist))).to_quaternion()
+        rot.append(tuple(q.to_euler()))
+    points = np.array([tuple(gd.V(x, y, z)) for x, y, z in T[:, :3]])
+    return instance_cloud("bonsai_needles", points, np.array(rot), T[:, 6], coll)
 
 
 def instance_cloud(name, points, rot, scale, coll):
@@ -1315,7 +1261,7 @@ def main(argv):
     lights = []
     build_lanterns(gd, M, lights)
     build_bridge(gd, M)
-    build_tree(gd, M, q["leaves"])
+    build_tree(gd, M)
     build_arm(gd, M)
     living, preserved = moss_shoots(M, rng)
     moss_on(ground["moss_living"], living, q["moss"], 1)
