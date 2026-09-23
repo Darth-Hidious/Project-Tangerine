@@ -33,7 +33,7 @@ import shapely
 from numba import njit
 
 from .config import Garden
-from .geometry import stone_polygons
+from .geometry import sand_region, stone_polygons
 
 
 @dataclass(frozen=True)
@@ -415,11 +415,12 @@ class Bed:
         self.stone = np.zeros((self.ny, self.nx), bool)
         for poly in stone_polygons(garden):
             self.stone |= shapely.contains_xy(poly, self.X, self.Y)
-        self.bed = ~self.stone
+        self.sand = shapely.contains_xy(sand_region(garden), self.X, self.Y)
+        self.bed = self.sand & ~self.stone
         self.h = np.full((self.ny, self.nx), garden.tray.bed_depth, dtype=np.float64)
         if unevenness is not None:
             self.h += unevenness
-        self.h[self.stone] = 0.0
+        self.h[~self.bed] = 0.0
         phi = math.radians(garden.grit.repose_deg)
         self.t4 = math.tan(phi) * dx
         self.t8 = math.tan(phi) * dx * math.sqrt(2.0)

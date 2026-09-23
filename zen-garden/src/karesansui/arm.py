@@ -263,21 +263,31 @@ class Drive:
     resolution: float
 
 
-def line_wobble(arm, q: np.ndarray, headings: np.ndarray, drive: Drive, tine_offsets) -> tuple[np.ndarray, np.ndarray]:
+def line_wobble(arm, q: np.ndarray, headings: np.ndarray, drive: Drive, tine_offsets,
+                preloaded=None) -> tuple[np.ndarray, np.ndarray]:
     """Worst-case lateral (across-the-groove) position error of the tool point and of the outer
     tines, per pose, for joints each off by up to +-(backlash + resolution) / 2.
 
     Only the component across the direction of travel matters: an error along the groove just
-    shifts where it is cut, an error across it bends the line."""
+    shifts where it is cut, an error across it bends the line. Joints listed in ``preloaded``
+    carry a load that never reverses (gravity on a pitch joint), so their gears stay on one
+    flank and only the resolution counts."""
     J = arm.jacobian_xy(q)                                   # (N, 2, n)
     n = np.column_stack([-np.sin(headings), np.cos(headings)])
     lateral = np.abs(np.einsum("ni,nij->nj", n, J))          # (N, n) mm per rad
-    e = math.radians((drive.backlash + drive.resolution) / 2)
-    centre = lateral.sum(axis=1) * e
+    pre = np.zeros(J.shape[2], bool) if preloaded is None else np.asarray(preloaded, bool)
+    e = np.radians(np.where(pre, drive.resolution, drive.backlash + drive.resolution) / 2)
+    centre = (lateral * e).sum(axis=1)
     # A heading error swings the outer tine by offset * dheading, mostly along the path, but
     # the along-path component is harmless; its across component is offset * dheading * sin(0)=0
     # for a straight bar, so only the centre error remains across the groove. Report the
     # heading error separately as the along-path smear of the outer tines.
-    dh = np.abs(arm.heading_sensitivity()).sum() * e
+    dh = (np.abs(arm.heading_sensitivity()) * e).sum()
     smear = max(abs(o) for o in tine_offsets) * dh * np.ones(len(q))
     return centre, smear
+
+
+def gravity_preloaded(arm, q: np.ndarray, margin: float = 0.05) -> np.ndarray:
+    """Joints whose holding torque keeps one sign (and is at least ``margin`` N m) over all q."""
+    tau = arm.gravity_torques(q)
+    return ((tau > margin).all(axis=0) | (tau < -margin).all(axis=0))

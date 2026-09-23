@@ -1,0 +1,130 @@
+{
+  "scara": {
+    "joints": [
+      "q1 base",
+      "q2 elbow",
+      "z lift",
+      "q4 tool yaw"
+    ],
+    "joint_range_deg": [
+      [
+        -91.1,
+        -20.7
+      ],
+      [
+        72.9,
+        140.3
+      ],
+      [
+        8.0,
+        8.0
+      ],
+      [
+        450.9,
+        1957.6
+      ]
+    ],
+    "gravity_preloaded": [
+      false,
+      false,
+      true,
+      false
+    ],
+    "max_holding_torque_Nm": [
+      0.0,
+      0.0,
+      3.433,
+      0.0
+    ],
+    "wobble_mm": {
+      "Hobby servo (STS3215)": {
+        "p50": 1.623,
+        "p95": 2.447,
+        "max": 2.75
+      },
+      "Smart servo (Dynamixel XM430)": {
+        "p50": 0.933,
+        "p95": 1.406,
+        "max": 1.581
+      },
+      "Stepper + 5:1 belt": {
+        "p50": 0.161,
+        "p95": 0.243,
+        "max": 0.274
+      },
+      "Harmonic drive": {
+        "p50": 0.108,
+        "p95": 0.162,
+        "max": 0.182
+      }
+    },
+    "base_torque_accel_plus_drag_Nm": 0.251
+  },
+  "articulated": {
+    "joints": [
+      "q1 base",
+      "q2 shoulder",
+      "q3 elbow",
+      "q4 wrist pitch",
+      "q5 tool yaw"
+    ],
+    "joint_range_deg": [
+      [
+        -30.4,
+        31.2
+      ],
+      [
+        33.6,
+        52.4
+      ],
+      [
+        -141.5,
+        -83.3
+      ],
+      [
+        -40.4,
+        -0.8
+      ],
+      [
+        511.8,
+        1646.0
+      ]
+    ],
+    "gravity_preloaded": [
+      false,
+      true,
+      false,
+      false,
+      false
+    ],
+    "max_holding_torque_Nm": [
+      0.0,
+      2.723,
+      0.834,
+      0.0,
+      0.0
+    ],
+    "wobble_mm": {
+      "Hobby servo (STS3215)": {
+        "p50": 2.33,
+        "p95": 2.686,
+        "max": 2.727
+      },
+      "Smart servo (Dynamixel XM430)": {
+        "p50": 1.37,
+        "p95": 1.58,
+        "max": 1.604
+      },
+      "Stepper + 5:1 belt": {
+        "p50": 0.243,
+        "p95": 0.28,
+        "max": 0.285
+      },
+      "Harmonic drive": {
+        "p50": 0.168,
+        "p95": 0.194,
+        "max": 0.197
+      }
+    }
+  }
+}
