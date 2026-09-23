@@ -26,7 +26,8 @@ from shapely.geometry import Point
 
 from karesansui import gcode, render, viz, water
 from karesansui.config import poc_garden
-from karesansui.geometry import sand_region
+from karesansui.geometry import sand_region, swing_radius
+from shapely.ops import unary_union
 from karesansui.planner import ArmMachine, build_program
 from karesansui.sim import Bed, SimCfg
 
@@ -39,11 +40,14 @@ def layout_figure(garden, machine) -> None:
     fig, ax = plt.subplots(figsize=(10.5, 7.4), dpi=150, facecolor=viz.SURFACE)
     viz.draw_tray(ax, garden)
     zones = viz.layout_zones(garden)
-    reach = matplotlib.patches.Circle(garden.arm.base, machine.arm.l1 + machine.arm.l2, fill=False,
-                                      ec=viz.INK2, lw=0.8, alpha=0.6, zorder=2)
-    ax.add_patch(reach)
-    reach.set_clip_path(matplotlib.patches.Rectangle((0, 0), garden.tray.width, garden.tray.depth,
-                                                     transform=ax.transData))
+    # where the head can go inside the joint limits (the limits are also hard stops)
+    head_r = swing_radius(garden.rake, garden.screed)
+    reach = unary_union(shapely.buffer(machine.sweep()["head"][::3], head_r, quad_segs=4)).simplify(1.0)
+    for g in getattr(reach, "geoms", [reach]):
+        xy = np.asarray(g.exterior.coords)
+        line, = ax.plot(xy[:, 0], xy[:, 1], color=viz.ORANGE, lw=1.1, ls=(0, (4, 2)), zorder=11)
+        line.set_clip_path(matplotlib.patches.Rectangle((0, 0), garden.tray.width, garden.tray.depth,
+                                                        transform=ax.transData))
     for f in garden.features:
         if f.kind in ("bay", "reservoir"):
             xy = np.asarray(f.outline + (f.outline[0],))
@@ -51,23 +55,23 @@ def layout_figure(garden, machine) -> None:
     q, _ = machine.ik(np.array([[330.0, 330.0, 0.0]]), machine.z_for("rake"))
     viz.draw_scara(ax, machine.arm, q, alpha=0.9)
     notes = [
-        ((115, 250), "stream\n(pumped, ~1 L/min)"),
-        ((110, 62), "pool"),
+        ((112, 222), "stream, 4 cascades\n(pumped, ~1 L/min)"),
+        ((104, 52), "pool"),
         ((380, 330), "fine white sand\n9 dm², raked"),
         ((398, 212), "stone pair"),
-        ((205, 440), "lantern"),
-        ((560, 20), "lantern"),
+        ((300, 432), "lanterns"),
+        ((560, 16), "lantern"),
         ((640, 158), "arm base"),
         ((638, 400), "electronics drawer\n(under the dry side)"),
-        ((120, 150), "reservoir 2 L\n(under the pool)"),
-        ((142, 192), "living\nmoss"),
-        ((52, 400), "bonsai"),
+        ((168, 130), "reservoir 3 L\n(under the pool)"),
+        ((70, 300), "hill"),
+        ((50, 438), "bonsai, pot sunk\nin the hill (dashed)"),
         ((470, 22), "preserved moss"),
     ]
     for (x, y), text in notes:
         ax.text(x, y, text, fontsize=8.2, color=viz.INK, ha="center", va="center", zorder=12,
                 bbox=dict(boxstyle="round,pad=0.25", fc=viz.SURFACE, ec="none", alpha=0.85))
-    ax.text(0, -12, f"SCARA reach {machine.arm.l1 + machine.arm.l2:.0f} mm (circle). "
+    ax.text(0, -12, "Orange dashes: everywhere the rake head can reach inside the arm's joint limits. "
                     "Tray 700 × 450 mm, viewer at the bottom edge.",
             fontsize=8.5, color=viz.INK2, va="top")
     ax.set_ylim(-35, 465)

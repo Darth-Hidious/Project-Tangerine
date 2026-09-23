@@ -11,13 +11,24 @@
 
 A 70 × 45 cm garden in a walnut tray on a small table, seen from the front:
 
-- **Left (wet side).** A pumped stream runs from a spring rock under a bonsai at the back, past a bridge and stream rocks, to a pool at the front. Living moss grows in a band along the water.
+- **Left (wet side).** The ground rises into a hill in the back-left corner, held by taller back and left walls.
+  - A bonsai about 30 cm tall stands on the hill, its pot sunk into the soil under the moss.
+  - A spring comes out beside the tree. The stream (467 mm) zigzags down the hill over four cascades (12, 30, 11 and 9 mm) into small plunge pools, passes under a bridge and reaches the pool at the front.
+  - Living moss grows along the water.
 - **Centre.** 9.1 dm² of fine white quartz sand, 25 mm deep, holds a pair of stones. That is 2.3 L, about 3.3 kg at an assumed 1450 kg/m³.
 - **Right (dry side).** The arm stands on a walnut column above the electronics drawer. It erases the sand and rakes a new pattern on command.
 - **Everywhere else.** Preserved (dry) moss.
-- **Light.** Two 90 mm stone lanterns with warm 60 lm LEDs light the grooves in the evening.
+- **Light.** Three stone lanterns (80–90 mm) with warm 60 lm LEDs light the grooves in the evening.
 
 ![Plan view of the proof of concept](docs/figures/poc_layout.png)
+
+**See it in 3D.** Open `docs/garden3d.html` in a browser; it needs WebGL 2 and an internet connection for Three.js. It is built by `experiments/export_3d.py` from the same model. It shows:
+
+- the terrain, and each pattern's simulated sand;
+- the arm running each program's real joint trajectory, erasing the old pattern and raking the new one;
+- the stream and its cascades;
+- a bonsai-height slider that reports the tree's clearance from the arm;
+- a synthesised brook sound.
 
 ## 2. Decisions at a glance
 
@@ -29,10 +40,11 @@ A 70 × 45 cm garden in a walnut tray on a small table, seen from the front:
 | 4 | **Erase = edge loop + lanes + stone rings.** Every loop exits with a quarter turn, and the blade rises over the last 30 mm of every pass. | The first erase piled sand up at pass ends: 1,537 mm³ over 40 cycles and still growing. This one levels off at about 17 mm³. See §3.4. |
 | 5 | **Fine white quartz sand, 0.1–0.5 mm, washed** | An 8 mm groove pitch needs grains much smaller than the pitch. This is reasoning; Phase 0 checks it. |
 | 6 | **Joint-space G-code on FluidNC** (ESP32). All kinematics and checks run on the host. | No kinematics in firmware. Every program passes `karesansui check` before it runs. |
-| 7 | **2 L reservoir under the pool, about 1 L/min, small 12 V pump, float cut-off.** No copper and no chiller. | Evaporation 0.10–0.15 L/day, so a refill every 7–10 days. Hydraulic power is 36 mW. Evaporation cools the water by about 3–4 W. Copper kills moss. See §3.7. |
-| 8 | **Bonsai outside the arm's reach, under its own grow light** | The canopy is 564 mm from the arm base; the reach envelope is 520 mm. The lanterns give tens to hundreds of lux; a tree needs thousands. See §3.6 and §3.8. |
-| 9 | **Indoors first** | Fine sand does not survive wind, rain or direct sun. The balcony works only under a cover and out of the sun. |
-| 10 | **Home Assistant later** | Not built. The machine comes first (Phase 4). |
+| 7 | **3 L reservoir under the pool, about 1 L/min, small 12 V pump, float cut-off.** No copper and no chiller. | Evaporation 0.13–0.18 L/day, so a refill every 8–11 days. Hydraulic power is 48 mW. Evaporation cools the water by about 4–5 W. Copper kills moss. See §3.7. |
+| 8 | **A stream built as cascades into plunge pools** | A brook's babble is air bubbles pulled under and ringing; falls and plunges make them. Four falls of 9–30 mm, landing at 0.5–0.8 m/s. The model can't predict the sound, so it gets tuned on the bench. See §3.7. |
+| 9 | **Joint limits as hard stops; the bonsai in the corner they leave free, under its own grow light** | The arm's joints are limited to what the programs use plus 5°. Inside that, a 30 cm tree clears the head by 38 mm and the links by 46 mm; it fits up to about 36 cm. The lanterns give tens to hundreds of lux; a tree needs thousands. See §3.1, §3.6 and §3.8. |
+| 10 | **Indoors first** | Fine sand does not survive wind, rain or direct sun. The balcony works only under a cover and out of the sun. |
+| 11 | **Home Assistant later** | Not built. The machine comes first (Phase 4). |
 
 ## 3. What the twin established
 
@@ -60,6 +72,15 @@ Against an 8 mm groove pitch, the servos bend the lines by a fifth to a third of
 
 - *Base torque:* acceleration plus drag needs 0.26 N·m at the base, assuming 0.5 N of rake drag (an estimate; Phase 0 measures it).
 - *Reach:* the arm reaches 460 mm. The farthest sand is 418 mm from its base.
+
+**Joint limits.** Nominally the base and elbow could swing ±170° and ±150°. The programs use only a slice of that:
+
+| | Base | Elbow |
+|---|---|---|
+| Used by the programs | −96° to −14° | 64° to 145° |
+| Limit (used range + 5°), firmware soft limit and mechanical stop | −103° to −8° | 58° to 150° |
+
+Inside those limits the head can reach the sand and its margins and nothing else (orange in the layout). That leaves the back-left corner free for the tree. The planner checks every tall object against everywhere the head and the links can be inside the limits, not just against the programs, so the guarantee holds even if a bug sends the arm somewhere unplanned. That's why the stops must be physical too. The articulated arm gets the same limits-and-sweep check.
 
 **Tool yaw.** Over one program the head's yaw winds through 3.8–5.0 full turns. Two ways to handle that:
 
@@ -136,7 +157,7 @@ A unit test repeats this over eight cycles, with the old erase as a negative con
 
 `docs/figures/poc_lux.png`.
 
-- **What the lanterns give the sand.** Each lantern has a 60 lm LED 55 mm above the sand; the room adds 15 lux. The raked sand gets **14 / 45 / 173–184 lux** (5th percentile / median / 95th). That low, warm light is what makes the grooves read in the renders.
+- **What the lanterns give the sand.** Each of the three lanterns has a 60 lm LED 48–55 mm above the sand; the room adds 15 lux. The raked sand gets **14 / 58–60 / 264–270 lux** (5th percentile / median / 95th). That low, warm light is what makes the grooves read in the renders.
 - **What the plants need.** Treat the lanterns as decoration: one gives about 480 lux at 100 mm and 120 lux at 200 mm.
   - *Bonsai:* care guides for indoor bonsai (Ficus and similar) ask for bright light for 6 hours or more a day, in the thousands of lux.
   - *Moss:* sources disagree by an order of magnitude.
@@ -149,30 +170,43 @@ A unit test repeats this over eight cycles, with the old erase as a negative con
 
 | Quantity | Value |
 |---|---|
-| Open water (stream 40 mm wide + pool) | 0.026 m² |
-| Living-moss band (≤ 45 mm from water, ≥ 30 mm from sand) | 0.048 m² |
-| Evaporation (22 °C, 45% RH air; ASHRAE pool formula) | 0.10 L/day (water only) to 0.15 L/day (plus moss wet half the time) |
-| Days until the 1 L usable half of a 2 L reservoir is gone | 6.8–9.9 days |
-| Pump duty at 1 L/min, 80 mm lift, 0.7 m of 6 mm tube | 0.22 m head, 36 mW hydraulic |
-| Stream depth on a smooth bed (Nusselt film, lower bound) | 1.0 mm at 0.42 m/s (Froude number 4.2) |
-| Example pump rated 3 m / 4 L/min, unthrottled | runs at 2.7 L/min: throttle it (valve or PWM) |
+| Open water (stream 44 mm wide, plunge pools, pool) | 0.034 m² |
+| Living-moss band (≤ 45 mm from water, ≥ 30 mm from sand) | 0.049 m² |
+| Evaporation (22 °C, 45% RH air; ASHRAE pool formula) | 0.13 L/day (water only) to 0.18 L/day (plus moss wet half the time) |
+| Days until the 1.5 L usable half of a 3 L reservoir is gone | 8.3–11.3 days |
+| Pump duty at 1 L/min, 145 mm lift, 0.8 m of 6 mm tube | 0.29 m head, 48 mW hydraulic |
+| Stream depth between cascades on a smooth bed (Nusselt film, lower bound) | 1.3–2.4 mm at 0.16–0.30 m/s (Froude number 1.05–2.7) |
+| Cascades: free fall, and speed on hitting the plunge pool | 12, 30, 11 and 9 mm; 0.50–0.82 m/s |
+| Example pump rated 3 m / 4 L/min, unthrottled | runs at 2.6 L/min: throttle it (valve or PWM) |
 
 What follows from it:
 
 - **Pump.** Any small 12 V DC fountain pump with a flow adjuster will do. PC-cooling pumps (D5/DDC class) are built for metres of head and many litres per minute; this loop needs neither.
-- **No chiller.** Evaporation takes 0.10–0.15 L/day out of the water, about 3–4 W of cooling. The water sits at or a little below room temperature.
+- **No chiller.** Evaporation takes 0.13–0.18 L/day out of the water, about 4–5 W of cooling. The water sits at or a little below room temperature.
 - **Top up with distilled or rain water.** Evaporation leaves the minerals behind. A month of tap-water top-ups concentrates them 2.5–3.2× (white crust on stones and moss).
-- **"Babbling" needs steps.** A smooth channel carries this flow as a 1 mm sheet, fast and nearly silent. Build the stream as drops of 10–20 mm over stones, and tune the sound on the bench (Phase 2): the twin can't model sound.
+- **The babble comes from the cascades.**
+  - *The physics:* the sound of running water is air bubbles pulled under the surface, each ringing at its [Minnaert resonance](https://en.wikipedia.org/wiki/Minnaert_resonance) (a 1 mm bubble near 3 kHz, a 5 mm one near 650 Hz). In rivers the bubbles come from [waterfalls, rapids and hydraulic jumps](https://onlinelibrary.wiley.com/doi/full/10.1002/esp.5199).
+  - *The design:* the flow between cascades is only 1–2 mm deep, so a smooth channel alone would be nearly silent. That is why the stream is built as four falls into plunge pools. The 30 mm main fall at the foot of the hill should carry most of the sound.
+  - *What's unknown:* the model gives drop heights and impact speeds but can't say whether they entrain enough air. If it's too quiet on the bench (Phase 2), raise the lips, narrow the chutes, or put a stone in each plunge pool.
 - **No copper anywhere wetted.** Copper is a moss killer: it is sold as a roof moss treatment, and it is toxic to aquatic mosses. Wetted parts should be glass, glazed ceramic, 316 stainless, silicone, PP or PE, or EPDM liner.
 - **Keep the sand dry.** Living moss stays at least 30 mm from the sand, and the sand sits in its own sealed basin with a low kerb. Damp sand rakes differently and grows algae.
 
 ### 3.8 The bonsai
 
-- **Position.** A shohin-size tree (about 190 mm tall, canopy about 100 mm across) sits in the back-left corner at the head of the stream, in the living moss.
-- **Clearance.** It is taller than the arm's travel height, so it must be out of reach entirely. The canopy is 564 mm from the arm base; the check envelope is 520 mm (460 mm reach plus the head plus a margin). The planner checks this on every program, and a test shows the same tree 100 mm closer is flagged.
-- **It grows.** Trim it, and re-measure the canopy in the config when it changes.
-- **Species.** Indoors, pick one sold as an indoor bonsai, such as Ficus or Portulacaria afra. Pines, junipers and maples need to be outdoors and go dormant in winter.
-- **Drainage.** The pot drains into the living-moss bed, and that bed drains to the reservoir.
+- **Position.** The tree stands on the hill in the back-left corner, at the head of the stream. Its pot is sunk into the hill under the moss, and the spring comes out beside it.
+- **Size and clearance.** The model's tree is 300 mm tall with a canopy of 23 × 17 cm. It is far taller than the arm's travel height and the links, so nothing of the arm may come near it anywhere inside the joint limits (§3.1). With the canopy spreading in proportion to height:
+
+  | Tree height | Canopy | Gap to the head | Gap to the links |
+  |---|---|---|---|
+  | 300 mm | 23 × 17 cm | 38 mm | 46 mm |
+  | 330 mm | 26 × 19 cm | 25 mm | 33 mm |
+  | 360 mm | 28 × 21 cm | 12 mm | 21 mm |
+  | 400 mm | 31 × 23 cm | inside the reach | 4 mm |
+
+  So a tree up to about 36 cm fits as drawn. A taller one needs a narrower canopy on the arm's side, or tighter joint limits. Give me your tree's height and canopy width and I'll check it exactly. The viewer's slider shows the same check live.
+- **It grows.** Trim it, and re-measure the canopy in the config when it changes; the planner re-checks on every program.
+- **Species.** Indoors, a tree sold as an indoor bonsai, such as Ficus or Portulacaria afra. Pines, junipers and maples need to be outdoors and go dormant in winter.
+- **Drainage.** The pot drains into the hill's soil, and that drains to the reservoir.
 
 ## 4. Build
 
@@ -182,6 +216,7 @@ What follows from it:
 - **Lift (z).**
   - A small stepper on a T8 lead screw (or a belt), with 110 mm of stroke: z = 0 is the latched blade on the sand, 100 mm is travel height.
   - Link undersides sit 175 mm above the sand, above the 90 mm lanterns and the stones (the taller stands 45 mm above the sand).
+- **Hard stops.** Pins or blocks on the base and elbow at the joint limits (−103° to −8°, and 58° to 150°). They're what keeps the arm off the tree even if the software goes wrong.
 - **Tool yaw (q4).**
   - A small stepper with a 3:1 belt.
   - A 6-circuit capsule slip ring carries the latch servo's three wires; the alternative is unwinding during travel, a planner change.
@@ -215,6 +250,8 @@ What follows from it:
 ### 4.3 Materials and the wet/dry split
 
 - **Tray.** Walnut frame on a plywood base.
+  - The back and left walls stand 85 mm above the sand (110 mm above the base) to hold the hill; the front and right walls 35 mm.
+  - The hill rises about 70 mm above the sand at its highest. It is soil over a drainage layer, with the tree's pot sunk into it.
   - The wet side (stream, pool, living moss) is lined with EPDM or sealed with epoxy.
   - The sand is a separate sealed basin with a 5–10 mm kerb.
   - All fasteners are stainless.
@@ -233,9 +270,9 @@ Rough estimates in euros from typical hobby prices. **Not checked against curren
 | Head | Linear slide, stainless pins, POM skid, blade, micro servo, 6-circuit slip ring, hall sensor | €30–60 |
 | Control | ESP32 FluidNC board with TMC2209 drivers, 3 limit switches, 24 V adapter (60–100 W), 12 V buck, wiring | €80–180 |
 | Water | 12 V DC pump with adjuster, float switch, leak sensor, silicone tube, sponge filter, reservoir, EPDM or epoxy | €50–100 |
-| Garden | Washed white sand (5 kg), two stones, stream rocks, living and preserved moss, shohin bonsai, two small lanterns with 2200 K LEDs, grow light | €120–260 |
+| Garden | Washed white sand (5 kg), two stones, stream and cascade rocks, soil for the hill, living and preserved moss, three small lanterns with 2200 K LEDs, grow light (your own bonsai) | €90–200 |
 | Tray | Walnut boards, plywood base, sealant and finish | €80–200 |
-| **Total** | | **roughly €500–1,050**, most of the spread being wood and the bonsai |
+| **Total** | | **roughly €460–990**, most of the spread being the wood |
 
 ## 6. Phases and exit criteria
 
@@ -264,7 +301,7 @@ Rough estimates in euros from typical hobby prices. **Not checked against curren
 
 - *Exit:*
   - 7 days without a leak;
-  - measured evaporation compared with 0.10–0.15 L/day;
+  - measured evaporation compared with 0.13–0.18 L/day;
   - the float cut-off stops the pump in a drain test;
   - the stream tuned until it sounds right.
 
@@ -285,8 +322,9 @@ Rough estimates in euros from typical hobby prices. **Not checked against curren
 3. **The arm is the most expensive and fiddliest part** (belts, homing, the slip ring). Phase 1 is where the budget goes.
 4. **Noise** from steppers and the pump in a quiet room. StealthChop helps, and you run cycles when you're there to watch anyway.
 5. **Living things change.** The bonsai grows toward the arm's envelope, and moss spreads or dies back. Trim, re-measure, re-check.
-6. **Water chemistry.** Minerals concentrate and algae appears. Top up with distilled water, keep the reservoir dark and clean it weekly.
-7. **Cycle time (about 10 min)** is half lifting. It is fine for watching and easy to cut later.
+6. **The hill has to stay put.** About 70 mm of wet soil in the corner needs the taller walls, a drainage layer and rocks at its foot, or it will slump into the stream.
+7. **Water chemistry.** Minerals concentrate and algae appears. Top up with distilled water, keep the reservoir dark and clean it weekly.
+8. **Cycle time (about 10 min)** is half lifting. It is fine for watching and easy to cut later.
 
 ## 8. What the twin cannot tell you
 
@@ -311,9 +349,9 @@ Rough estimates in euros from typical hobby prices. **Not checked against curren
 | 4.5 N force-controlled (impedance) raking | A floating comb on a skid | Depth follows the sand passively (tested) |
 | 5 tines at 25 mm pitch | 5 tines at 8 mm pitch | Desk scale; pattern share on a small bed (§3.3) |
 | Waves with λ = 60 mm, A = 15 mm | Waves derived from the comb (λ 128 mm, A 3.8 mm) | The original shape needs a 6.1 mm turn radius; the comb can't turn tighter than 17.25 mm without its inner tine running backwards (test) |
-| Rim LED strips at < 15° | Two lanterns for raking light, plus a grow light for the plants | The picture; plants need far more light than the grooves do |
+| Rim LED strips at < 15° | Three lanterns for raking light, plus a grow light for the plants | The picture; plants need far more light than the grooves do |
 | Home Assistant from the start | Phase 4 | The machine comes first |
-| (Earlier chat) copper basin, compressor chiller, D5/DDC pumps | Glass, glazed or stainless; no chiller; a small 12 V pump, throttled | Copper kills moss; 3–4 W of evaporative cooling; 36 mW of pumping needed |
+| (Earlier chat) copper basin, compressor chiller, D5/DDC pumps | Glass, glazed or stainless; no chiller; a small 12 V pump, throttled | Copper kills moss; 4–5 W of evaporative cooling; 48 mW of pumping needed |
 | Keystones anchored through the base | Kept (glued or pinned) | Agreed |
 
 ## 10. Reproduce
@@ -324,5 +362,6 @@ python experiments/poc_run.py       # the garden end to end: docs/poc_results.js
 python experiments/arm_study.py     # §3.1
 python experiments/comb_study.py    # §3.3
 python experiments/erase_study.py   # §3.4 (about two minutes)
+python experiments/export_3d.py     # the 3D viewer, docs/garden3d.html (about a minute)
 pytest                              # the checks listed in README.md
 ```
