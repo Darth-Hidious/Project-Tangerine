@@ -41,7 +41,7 @@ grain_mm = 0.3
 albedo = 0.60
 
 [rake]                   # a small floating comb on the arm's wrist
-n_tines = 9
+n_tines = 5              # a 9-tine comb leaves the pattern only 5-10 % of the raking on this bed (PLAN.md 3.3)
 pitch = 8.0
 tine_width = 2.5         # 2.5 mm stainless pins
 depth = 5.0
@@ -55,8 +55,8 @@ float_travel = 25.0
 mode = "skid"
 
 [screed]
-width = 76.0
-overlap = 8.0
+width = 44.0             # a blade much wider than the comb would set the head's clearance everywhere
+overlap = 6.0
 thickness = 4.0
 
 [gantry]                 # motion limits of whatever carries the head (here: the arm, in Cartesian terms)
@@ -78,7 +78,7 @@ min_stroke = 20.0
 closed_overlap = 30.0
 
 [lighting]
-ambient_lux = 150.0      # evening room light; the lanterns do the raking light
+ambient_lux = 15.0       # dim evening room light; the lanterns do the raking light
 strips = []
 
 [arm]
@@ -86,7 +86,7 @@ kind = "scara"
 base = [640.0, 225.0]
 base_radius = 45.0
 zero_deg = 180.0         # base-yaw range centred on the sand (to the left of the base)
-travel_lift = 100.0      # clears the 70 mm stone and the 90 mm lanterns
+travel_lift = 100.0      # clears the stones (45 mm above the sand) and the 90 mm lanterns
 
 [arm.scara]
 link1 = 230.0
@@ -139,8 +139,8 @@ name = "stream"
 kind = "stream"
 width = 40.0
 height = -15.0
-outline = [
-    [62, 428], [88, 372], [58, 305], [112, 240], [92, 172],
+outline = [                 # springs from the rock at the back, under the bonsai's canopy
+    [100, 440], [112, 372], [70, 305], [112, 240], [92, 172],
     [126, 118], [118, 92],
 ]
 
@@ -187,7 +187,16 @@ name = "stream rock 3"
 kind = "rock"
 height = 25.0
 outline = [
-    [20, 402], [38, 392], [52, 405], [40, 420], [22, 416],
+    [84, 420], [100, 410], [118, 418], [112, 436], [90, 437],
+]
+
+[[features]]              # living tree, out of the arm's reach: see the obstacle check in the planner
+name = "bonsai"
+kind = "tree"
+height = 190.0            # top of the foliage above the sand surface
+outline = [               # canopy footprint (the pot sits under its left half, on the moss)
+    [102, 398], [97, 423], [83, 441], [62, 448], [40, 446], [20, 435],
+    [6, 416], [4, 392], [14, 370], [34, 355], [58, 350], [80, 357], [96, 374],
 ]
 
 [[features]]

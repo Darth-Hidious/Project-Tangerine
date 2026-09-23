@@ -24,9 +24,10 @@ def test_every_planned_pose_is_a_commanded_point(setup):
     garden, m, prog, lines, segs = setup
     ends = m.arm.fk(np.array([s.q1 for s in segs if not s.rapid]))
     for p in prog.passes:
-        z = m.z_for(p.kind)
-        for pose in p.poses[:: max(len(p.poses) // 25, 1)]:
-            d = np.hypot(ends[:, 0] - pose[0], ends[:, 1] - pose[1]) + np.abs(ends[:, 2] - z)
+        z = m.z_for(p.kind) + (p.lift if p.lift is not None else np.zeros(len(p.poses)))
+        for k in range(0, len(p.poses), max(len(p.poses) // 25, 1)):
+            pose = p.poses[k]
+            d = np.hypot(ends[:, 0] - pose[0], ends[:, 1] - pose[1]) + np.abs(ends[:, 2] - z[k])
             assert d.min() < 2e-3                      # 4-decimal degrees at ~0.5 m reach
 
 

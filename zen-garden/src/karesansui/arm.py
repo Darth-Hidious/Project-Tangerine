@@ -89,6 +89,12 @@ class Scara:
         ok &= _within(q1, self.lim1) & _within(q2, self.lim2)
         return np.column_stack([q1, q2, poses[:, 2], q4]), ok
 
+    def in_limits(self, q: np.ndarray) -> np.ndarray:
+        """Joint limits per configuration. The lift strokes from z = 0 (latched blade edge on the
+        sand, as when screeding) up to ``lift``; the tool yaw turns without limit (slip ring)."""
+        q = np.atleast_2d(q)
+        return _within(q[:, 0], self.lim1) & _within(q[:, 1], self.lim2) & _within(q[:, 2], (0.0, self.lift))
+
     def jacobian_xy(self, q: np.ndarray) -> np.ndarray:
         """(N, 2, n_joints) sensitivity of the tool point's x, y to each joint."""
         q = np.atleast_2d(q)
@@ -192,6 +198,12 @@ class Articulated:
         q5 = _continuous(poses[:, 3] - (q1 + self.zero), None if q_prev is None else q_prev[4])
         ok &= _within(q1, self.lim1) & _within(q2, self.lim2) & _within(q3, self.lim3)
         return np.column_stack([q1, q2, q3, q4, q5]), ok
+
+    def in_limits(self, q: np.ndarray) -> np.ndarray:
+        """Base, shoulder and elbow limits; the wrist pitch follows the elbow and the tool yaw
+        turns without limit (slip ring)."""
+        q = np.atleast_2d(q)
+        return _within(q[:, 0], self.lim1) & _within(q[:, 1], self.lim2) & _within(q[:, 2], self.lim3)
 
     def jacobian_xy(self, q: np.ndarray, eps: float = 1e-6) -> np.ndarray:
         q = np.atleast_2d(q).astype(float)

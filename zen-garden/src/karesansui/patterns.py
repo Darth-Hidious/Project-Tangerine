@@ -200,16 +200,17 @@ def island_rings(garden: Garden, isl: list[Island], fill: bool = False) -> list[
 
 
 # --------------------------------------------------------------------------- border frame
-def frame_centreline(garden: Garden) -> np.ndarray:
+def frame_centreline(garden: Garden, radius: float | None = None) -> np.ndarray:
     """A pass that hugs the walls: rounded rectangle, raked clockwise from the north-west.
 
     Rings and spirals meet the walls at shallow angles, and the leading skid stops them
-    early there; a frame raked last gives the pattern a clean border instead of crescents."""
+    early there; a frame raked last gives the pattern a clean border instead of crescents.
+    ``radius`` is the tightest turn allowed (default: the comb's soft limit plus 20 mm)."""
     wc, lat, rake = garden.planner.wall_clearance, head_lateral_half(garden), garden.rake
     inset = wc + lat + SLACK
     region = sand_region(garden)
     rect = region.buffer(-inset, join_style="mitre" if not garden.sand_outline else "round")
-    r = rake.min_radius_soft + 20.0
+    r = rake.min_radius_soft + 20.0 if radius is None else radius
     # Opening rounds convex corners to radius r, the closing after it rounds concave ones.
     rounded = rect.buffer(-r, join_style="mitre").buffer(2 * r, quad_segs=QUAD_SEGS).buffer(-r, quad_segs=QUAD_SEGS)
     if rounded.geom_type == "MultiPolygon":

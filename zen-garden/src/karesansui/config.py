@@ -103,6 +103,8 @@ class Screed:
     width: float = 110.0      # blade length across the direction of travel
     overlap: float = 10.0     # overlap between adjacent screed lanes
     thickness: float = 6.0    # blade thickness along the direction of travel
+    feather: float = 30.0     # the blade rises over the last this-many mm of a pass ...
+    feather_rise: float = 3.0 # ... by this much, spreading the sand it carries instead of dropping a pile
 
 
 @dataclass(frozen=True)

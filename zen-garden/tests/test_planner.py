@@ -158,3 +158,25 @@ def test_obstacle_taller_than_the_lift_is_reported(poc):
     garden = dataclasses.replace(poc, lanterns=(poc.lanterns[0], tall))
     msgs = ArmMachine(garden, "scara").obstacle_clearance()
     assert len(msgs) == 1 and "front-right lantern" in msgs[0]
+
+
+def test_bonsai_is_clear_only_while_it_stays_out_of_reach(poc):
+    """The tree is taller than the travel lift, so it must sit beyond the arm's reach plus the
+    head's size; the same tree 100 mm closer to the arm is reported."""
+    tree = next(f for f in poc.features if f.kind == "tree")
+    assert tree.height > poc.arm.travel_lift
+    assert ArmMachine(poc, "scara").obstacle_clearance() == []
+    moved = dataclasses.replace(tree, outline=tuple((x + 100.0, y) for x, y in tree.outline))
+    garden = dataclasses.replace(poc, features=tuple(moved if f is tree else f for f in poc.features))
+    msgs = ArmMachine(garden, "scara").obstacle_clearance()
+    assert len(msgs) == 1 and "bonsai" in msgs[0]
+
+
+@pytest.mark.parametrize("kind", ["scara", "articulated"])
+def test_erase_reaches_all_but_the_stone_gaps_and_the_edge_strip(poc, kind):
+    """The screed loop along the sand's edge plus lanes and island rings pass the blade over at
+    least 90 % of the open sand; the rest is the gap between the paired stones, the clearance
+    band around them and the strip the head keeps from the edge."""
+    prog = build_program(poc, "ripples", machine=ArmMachine(poc, kind))
+    assert prog.report.erase_coverage > 0.9
+    assert any(p.label == "screed:frame" for p in prog.passes)

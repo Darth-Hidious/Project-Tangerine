@@ -46,6 +46,27 @@ def test_scara_reach_limits(garden):
 
 
 @pytest.mark.parametrize("kind", ["scara", "articulated"])
+def test_joint_limit_check_agrees_with_ik(garden, kind):
+    """in_limits (used to check G-code) must accept exactly what the IK calls reachable."""
+    arm = make_arm(garden, kind)
+    poses = random_poses(arm.base, 2000, 60, 560, 12.0, seed=3)
+    q, ok = arm.ik(poses)
+    reach = arm.l1 + arm.l2 if kind == "scara" else arm.lu + arm.lf
+    inside = np.hypot(*(poses[:, :2] - arm.base).T) < reach - 60     # both sides of every limit get sampled
+    assert ok.any() and (~ok & inside).any()
+    assert np.array_equal(arm.in_limits(q)[inside], ok[inside])
+
+
+def test_scara_lift_stroke_limits(garden):
+    arm = make_arm(garden, "scara")
+    q, ok = arm.ik(random_poses(arm.base, 1, 250, 250, 0.0))
+    assert ok[0] and arm.in_limits(q)[0]
+    for z, expected in ((garden.arm.scara.lift, True), (garden.arm.scara.lift + 0.5, False), (-0.5, False)):
+        q[0, 2] = z
+        assert arm.in_limits(q)[0] == expected
+
+
+@pytest.mark.parametrize("kind", ["scara", "articulated"])
 def test_jacobian_matches_finite_differences(garden, kind):
     arm = make_arm(garden, kind)
     poses = random_poses(arm.base, 50, 180, 420, 0.0, seed=3)

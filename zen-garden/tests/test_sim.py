@@ -112,3 +112,35 @@ def test_unevenness_field_is_zero_mean_with_requested_peak(garden):
     assert f.shape == (200, 300)
     assert abs(f.mean()) < 1e-9
     assert np.abs(f).max() == pytest.approx(3.0)
+
+
+@pytest.mark.parametrize("full_erase", [True, False])
+def test_repeated_erase_and_rake_cycles_do_not_pile_sand_up(full_erase):
+    """The whole proof-of-concept garden, eight cycles of erase + pattern (ripples and lines in
+    turn) through G-code, on one bed. The blade drops whatever it still carries where a pass
+    ends; where that lands on sand no pass sweeps, it piles up cycle after cycle. The full erase
+    (a loop along the sand's edge, a quarter-turn exit from every loop, a rising blade at every
+    pass end) keeps that sand moving; the negative control, the erase without those three, piles
+    it up. Measure: sand standing more than 2 mm above the flat bed. Over 40 cycles the full
+    erase levels off at 12-17 mm3 while the control passes 1500 mm3 and keeps growing
+    (PLAN.md 3.4)."""
+    from karesansui import gcode, planner
+    from karesansui.config import poc_garden
+    from karesansui.sim import SimCfg
+
+    g = poc_garden()
+    m = planner.ArmMachine(g, "scara")
+    cfg = SimCfg(dx=1.0)
+    progs = [planner.build_program(g, pat, machine=m, bare_erase=not full_erase) for pat in ("ripples", "lines")]
+    trajs = [gcode.sample(gcode.parse(gcode.generate(p), "scara"), m.arm, step_mm=cfg.dx * cfg.step) for p in progs]
+    bed = Bed(g, cfg)
+    v0 = bed.volume()
+    for k in range(8):
+        gcode.run_on_bed(bed, trajs[k % 2])
+    rel = bed.h[bed.bed] - g.tray.bed_depth
+    piled = float(np.clip(rel - 2.0, 0.0, None).sum()) * cfg.dx**2      # mm3 above +2 mm
+    assert bed.volume() == pytest.approx(v0, rel=1e-12)
+    if full_erase:
+        assert piled < 10.0
+    else:
+        assert piled > 40.0

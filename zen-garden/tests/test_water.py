@@ -52,3 +52,16 @@ def test_poc_water_report_is_plausible():
     lo, hi = r.evaporation_l_day
     assert 0.03 < lo < hi < 0.5
     assert r.hydraulic_power_w < 0.5
+
+
+def test_living_moss_keeps_its_distance_from_the_sand():
+    """Wet moss beside the raked sand would dampen it (grooves slump, algae grows): the living
+    zone stays inside the tray, off the water and at least DRY_GAP from the sand."""
+    from shapely.geometry import box
+    from karesansui.geometry import sand_region
+    g = poc_garden()
+    zone = water.living_moss_zone(g)
+    assert zone.area > 0.02e6                                     # there is a wet band to plant
+    assert zone.distance(sand_region(g)) >= water.DRY_GAP - 0.05     # buffer arcs are drawn as chords
+    assert zone.intersection(water.water_zones(g)).area < 1e-6
+    assert box(0, 0, g.tray.width, g.tray.depth).contains(zone)

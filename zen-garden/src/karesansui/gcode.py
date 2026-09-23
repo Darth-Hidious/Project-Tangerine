@@ -112,7 +112,7 @@ def generate(program: Program, limits: Limits = Limits()) -> list[str]:
             rapid(j[1:-1])
             continue
         p: Pass = step
-        z = m.z_for(p.kind)
+        z = m.z_for(p.kind) + (p.lift if p.lift is not None else 0.0)
         q, ok = m.ik(p.poses, z, q_prev=q_prev)
         if not ok.all():
             raise ValueError(f"{p.label}: pose out of reach while generating G-code")
@@ -124,7 +124,7 @@ def generate(program: Program, limits: Limits = Limits()) -> list[str]:
         if q_prev is None:
             feed(q[0], 1.0)
         else:
-            vertical(z)
+            vertical(float(np.broadcast_to(z, (len(q),))[0]))
             feed(q[0], 0.05)                                 # snap onto the exact pass start
         out.append(f"G4 P{limits.settle:g}")
         seg = np.hypot(*np.diff(p.poses[:, :2], axis=0).T)
@@ -227,12 +227,13 @@ def sample(segs: list[Segment], arm, step_mm: float = 0.5) -> dict:
 
 
 def run_on_bed(bed, traj: dict) -> None:
-    """Apply a sampled trajectory to a sand bed: screed wherever the blade is in the sand,
-    rake wherever the head is released; the arm's z is the blade edge above the sand surface."""
+    """Apply a sampled trajectory to a sand bed: rake wherever the head is released, screed
+    wherever the latched blade is lower than the rake's working height (at the sand, or rising
+    off it at the end of a pass); the arm's z is the blade edge above the sand surface."""
     s = bed.garden.tray.bed_depth
     z_abs = traj["z"] + s
     released = traj["released"]
-    in_sand = z_abs < s + 1.0                               # blade at (or below) the surface: screeding
+    in_sand = traj["z"] < bed.garden.gantry.rake_clearance   # blade on or just above the sand
     # Split into runs of constant tool state; travel samples above the surface are skipped by the kernels.
     state = np.where(released, 2, np.where(in_sand, 1, 0))
     edges = np.flatnonzero(np.diff(state)) + 1

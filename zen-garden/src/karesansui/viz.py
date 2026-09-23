@@ -17,6 +17,7 @@ from shapely.geometry import LineString, Point, Polygon
 
 from .geometry import sand_region, stone_polygons, tine_paths
 from .planner import Pass, Program, Travel, coverage
+from .water import living_moss_zone
 
 SURFACE, INK, INK2, MUTED, HAIR, AXIS = "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
 BLUE, ORANGE, AQUA, RED = "#2a78d6", "#eb6834", "#1baf7a", "#d03b3b"
@@ -36,6 +37,7 @@ def style_axes(ax) -> None:
 
 
 SAND, WATER, MOSS_LIVE, MOSS_DRY, WOOD, ROCK = "#efe9dc", "#86b6ef", "#3f8f3a", "#a7b98a", "#8a5a3b", "#9a9890"
+TREE = "#1f4a1c"
 
 
 def _poly(ax, geom, **kw):
@@ -60,7 +62,7 @@ def layout_zones(garden) -> dict:
             water.append(Polygon(f.outline))
     water = unary_union(water) if water else Polygon()
     land = tray.difference(sand).difference(water)
-    living = water.buffer(45.0).intersection(land) if not water.is_empty else Polygon()
+    living = living_moss_zone(garden).intersection(land)
     preserved = land.difference(living)
     return {"tray": tray, "sand": sand, "water": water, "living": living, "preserved": preserved}
 
@@ -78,6 +80,8 @@ def draw_tray(ax, garden, stones: bool = True, layout: bool = True) -> None:
                 _poly(ax, Polygon(f.outline), color=ROCK, lw=0, zorder=1)
             elif f.kind == "bridge":
                 _poly(ax, Polygon(f.outline), color=WOOD, lw=0, zorder=1)
+            elif f.kind == "tree":
+                _poly(ax, Polygon(f.outline), color=TREE, lw=0, alpha=0.9, zorder=6)
         for lan in garden.lanterns:
             ax.add_patch(matplotlib.patches.Circle(lan.xy, lan.radius, color="#6f6e69", lw=0, zorder=6))
             ax.add_patch(matplotlib.patches.Circle(lan.xy, lan.radius * 0.45, color="#f3c77a", lw=0, zorder=7))
@@ -109,7 +113,7 @@ def plot_plan(ax, program: Program, show_travel: bool = True, show_gaps: bool = 
         grit = shapely.contains_xy(sand_region(g), X, Y)
         gaps = np.ma.masked_where(raked | ~grit, np.ones(raked.shape))
         ax.imshow(gaps, extent=(0, g.tray.width, 0, g.tray.depth), origin="lower", cmap=matplotlib.colors.ListedColormap([ORANGE]),
-                  alpha=0.16, zorder=0, interpolation="nearest")
+                  alpha=0.35, zorder=0.3, interpolation="nearest")     # over the sand fill (0.2)
     lw = 0.7 if g.rake.pitch >= 20 else 0.45
     for p in rakes:
         for path in tine_paths(p.poses[:, :2], g.rake.tine_offsets):

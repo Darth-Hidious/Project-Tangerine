@@ -27,6 +27,7 @@ from shapely.geometry import LineString, Point, Polygon
 
 from .config import Garden
 from .geometry import sand_region, stone_polygons
+from .water import living_moss_zone
 
 # ---------------------------------------------------------------------------------- colour
 _XYZ_TO_SRGB = np.array([[3.2406, -1.5372, -0.4986],
@@ -129,7 +130,7 @@ def build_scene(garden: Garden, sand_h: np.ndarray, dx: float, rim: float = 30.0
     z_land += 1.4 * _noise((ny, nx), 2.0 / dx, seed + 2) + 5.0 * _noise((ny, nx), 25.0 / dx, seed + 3)
     z_land += 2.2 * np.abs(_noise((ny, nx), 3.0 / dx, seed + 12))       # cushions of moss
     h[land] = base + z_land[land]
-    living = land & (d_water <= 45.0)
+    living = land & shapely.contains_xy(living_moss_zone(garden), XX, YY)
     tex = 1 + 0.35 * _noise((ny, nx), 1.2 / dx, seed + 4)
     alb[land & ~living] = np.array([0.12, 0.20, 0.055]) * tex[land & ~living][:, None]
     alb[living] = np.array([0.06, 0.15, 0.03]) * tex[living][:, None]
@@ -463,6 +464,30 @@ def lantern_mesh(garden: Garden, lan, scene: Scene) -> list:
     # windows: slightly proud of the firebox so they win the depth test, emissive
     glow = cct_to_rgb(lan.cct, white=scene.white)
     parts.append((cylinder(c, r * 0.56, S + fb0 + 0.02 * H, S + fb1 - 0.02 * H, 6), ("emit", glow * 1.4)))
+    return parts
+
+
+def tree_mesh(garden: Garden, f, scene: Scene) -> list:
+    """A small bonsai: a glazed pot on the moss, a trunk leaning towards the canopy's far side and
+    three flat foliage pads, sized from the feature's canopy outline (plan) and height."""
+    S = scene.base + garden.tray.bed_depth
+    canopy = Polygon(f.outline)
+    c = np.array(canopy.centroid.coords[0])
+    r = math.sqrt(canopy.area / math.pi)
+    H = f.height
+    glaze, bark, leaf = (0.10, 0.13, 0.16), (0.16, 0.10, 0.06), (0.05, 0.13, 0.04)
+    foot = c + np.array([-0.3 * r, 0.0])                    # trunk base, under the canopy's left half
+    pot_h = 0.13 * H
+    parts = [(box(foot - [0.7 * r, 0], foot + [0.7 * r, 0], 0.95 * r, pot_h, S - 2.0), glaze)]
+    lean = [foot, foot + [0.12 * r, 0.02 * r], foot + [0.28 * r, 0.05 * r], foot + [0.40 * r, 0.06 * r]]
+    heights = [S + pot_h, S + 0.30 * H, S + 0.52 * H, S + 0.70 * H, S + 0.88 * H]
+    for k, xy in enumerate(lean):
+        parts.append((cylinder(xy, (0.24 - 0.05 * k) * r, heights[k], heights[k + 1], 12), bark))
+    pads = [((-0.35, -0.15), 0.50, 0.50), ((0.45, -0.05), 0.55, 0.62), ((-0.05, 0.25), 0.55, 0.74),
+            ((0.25, 0.05), 0.45, 0.90)]
+    for (ox, oy), rad, zf in pads:
+        z = S + zf * H
+        parts.append((cylinder(c + r * np.array([ox, oy]), rad * r, z - 0.045 * H, z + 0.045 * H, 12), leaf))
     return parts
 
 

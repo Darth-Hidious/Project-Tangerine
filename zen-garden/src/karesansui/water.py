@@ -17,10 +17,14 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from shapely.geometry import LineString, Polygon
+from shapely.geometry import LineString, Polygon, box
 from shapely.ops import unary_union
 
 from .config import Garden
+from .geometry import sand_region
+
+MOSS_BAND = 45.0     # living moss grows within this distance of open water ...
+DRY_GAP = 30.0       # ... but no closer than this to the raked sand, so damp never reaches it
 
 G = 9.81
 RHO = 998.0          # kg/m^3 at 20 C
@@ -51,6 +55,18 @@ def water_zones(garden: Garden):
         elif f.kind == "pool":
             shapes.append(Polygon(f.outline))
     return unary_union(shapes) if shapes else Polygon()
+
+
+def living_moss_zone(garden: Garden, band: float = MOSS_BAND, dry_gap: float = DRY_GAP):
+    """Where the living (wet) moss goes: within ``band`` of open water, inside the tray, off the
+    sand and at least ``dry_gap`` from it. Everything else that is not sand, water or rock is
+    preserved (dry) moss."""
+    water = water_zones(garden)
+    if water.is_empty:
+        return Polygon()
+    tray = box(0.0, 0.0, garden.tray.width, garden.tray.depth)
+    return (water.buffer(band).intersection(tray).difference(water)
+            .difference(sand_region(garden).buffer(dry_gap, quad_segs=64)))
 
 
 def open_water_m2(garden: Garden) -> float:
@@ -115,11 +131,10 @@ class WaterReport:
     froude: float
 
 
-def report(garden: Garden, drop_mm: float = 50.0, wet_moss_band: float = 45.0) -> WaterReport:
+def report(garden: Garden, drop_mm: float = 50.0) -> WaterReport:
     w = garden.water
-    water = water_zones(garden)
     area = open_water_m2(garden)
-    moss = (water.buffer(wet_moss_band).difference(water).area / 1e6) if not water.is_empty else 0.0
+    moss = living_moss_zone(garden).area / 1e6
     e_water = evaporation_l_per_day(area, activity=1.0)
     e_both = e_water + evaporation_l_per_day(0.5 * moss, activity=0.5)       # moss wet about half the time
     usable = w.reservoir_l * w.usable_fraction

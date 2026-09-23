@@ -27,8 +27,8 @@ from .config import Garden
 from .geometry import (allowed_region, cumulative_length, curvature, free_space, poses_from_path,
                        poses_valid, resample, sand_region, split_runs, stone_polygons, swing_radius,
                        tine_paths)
-from .patterns import (PATTERNS, PatternError, Stroke, head_lateral_half, islands, ring_base_offset,
-                       ring_centreline)
+from .patterns import (PATTERNS, PatternError, Stroke, frame_centreline, head_lateral_half, islands,
+                       ring_base_offset, ring_centreline)
 
 CURVATURE_WINDOW = 10.0   # mm, see geometry.curvature
 SLACK = 0.5
@@ -39,6 +39,7 @@ class Pass:
     kind: str               # "screed" | "rake"
     poses: np.ndarray       # (N, 3) x, y, heading [rad], headings continuous across the program
     label: str = ""
+    lift: np.ndarray | None = None   # (N,) mm above the pass's working height (the screed's exit ramp)
 
 
 @dataclass
@@ -62,6 +63,7 @@ class Report:
     poses_checked: int = 0
     collisions: int = 0
     coverage: float = 0.0             # share of open grit within half a pitch of a groove
+    erase_coverage: float = 0.0       # share of open grit the screed blade passes over
     spacing: dict = field(default_factory=dict)   # nearest-neighbour groove spacing percentiles
     rotation_deg: float = 0.0         # total head rotation, for cable/slip-ring sizing
     warnings: list[str] = field(default_factory=list)
@@ -164,12 +166,24 @@ def rake_passes(machine, strokes: list[Stroke]) -> tuple[list[Pass], float]:
     return passes, dropped
 
 
-def screed_passes(machine) -> list[Pass]:
-    """Erase: lanes east to west over the whole bed, then rings around every island."""
+def screed_passes(machine, bare: bool = False) -> list[Pass]:
+    """Erase: a loop along the edge of an organic sand area, lanes east to west across the bed,
+    then rings around every island. ``bare`` is the erase as first written (lanes and rings,
+    the blade lifted at once), kept as the baseline that experiments/erase_study.py compares.
+
+    The blade drops the sand it is still carrying where a pass ends. Lanes end at the edge, in
+    the band the loop sweeps first on the next erase, and a loop runs back over its own start;
+    so leftovers are carried on rather than piled up (the multi-cycle test in test_sim checks
+    that the bed stays level). A blade has no inner tine to run backwards, so the loop may turn
+    as tight as half the blade plus 10 mm and follow the edge more closely than the rake frame."""
     garden = machine.garden
     wc, step = garden.planner.wall_clearance, garden.planner.sample_step
     lat = head_lateral_half(garden)
     spacing = garden.screed.width - garden.screed.overlap
+    passes = []
+    if garden.sand_outline and not bare:
+        edge = frame_centreline(garden, radius=garden.screed.width / 2 + 10.0)
+        passes += _passes_from(edge, True, "screed", "screed:frame", machine)
     bx0, by0, bx1, by1 = sand_region(garden).bounds
     lo, hi = by0 + wc + lat + SLACK, by1 - wc - lat - SLACK
     ys = list(np.arange(lo, hi + 1e-9, spacing))
@@ -178,7 +192,6 @@ def screed_passes(machine) -> list[Pass]:
     back = max(garden.rake.bar_thickness, garden.screed.thickness) / 2
     x_start = bx1 - wc - back - SLACK   # heading west: only the back of the head faces east
     x_end = bx0 + wc + garden.rake.reach_ahead + SLACK   # the skid leads towards the west wall
-    passes = []
     for y in ys:
         xy = resample(np.array([[x_start, y], [x_end, y]]), step)
         passes += _passes_from(xy, False, "screed", "screed:lane", machine)
@@ -189,7 +202,72 @@ def screed_passes(machine) -> list[Pass]:
             xy = ring_centreline(island, d, step)
             passes += _passes_from(xy, True, "screed", f"screed:ring:{island.name}", machine)
             d += spacing
+    if bare:
+        return passes
+    loop_radius = garden.screed.width / 2 + 10.0
+    passes = [_exit_turn(p, machine, loop_radius) if p.label.startswith(("screed:frame", "screed:ring")) else p
+              for p in passes]
+    for p in passes:
+        p.lift = feather(p.poses, garden)
     return passes
+
+
+def _exit_turn(p: Pass, machine, radius: float) -> Pass:
+    """End a screed loop with a quarter turn to the right, as far as the head stays clear.
+
+    Right of the edge loop (clockwise) is the open sand; right of a ring (counter-clockwise
+    round its stones) is away from them. So the blade's exit ramp lays what it still carries
+    down on sand a later pass sweeps, not beside the strips no pass reaches."""
+    x, y, th = p.poses[-1]
+    centre = np.array([x + radius * math.sin(th), y - radius * math.cos(th)])
+    step = machine.garden.planner.sample_step
+    k = max(int(math.ceil(radius * math.pi / 2 / step)), 2)
+    phi = np.linspace(0.0, math.pi / 2, k + 1)[1:]
+    v = np.array([x, y]) - centre
+    pts = centre + np.column_stack([v[0] * np.cos(phi) + v[1] * np.sin(phi),
+                                    -v[0] * np.sin(phi) + v[1] * np.cos(phi)])
+    arc = np.column_stack([pts, th - phi])
+    ok = machine.valid(arc, "screed")
+    n = len(ok) if ok.all() else int(np.argmin(ok))
+    if n < 2:
+        return p
+    return Pass(p.kind, np.vstack([p.poses, arc[:n]]), p.label)
+
+
+def feather(poses: np.ndarray, garden: Garden) -> np.ndarray:
+    """The blade's exit ramp: flat, then rising ``feather_rise`` over the last ``feather`` mm.
+
+    A blade lifted at once leaves everything it carries in one pile just ahead of it, and a pile
+    at the end of a pass lands in sand no pass sweeps (the edge strip, the gap between stones),
+    so it grows every erase. Rising slowly, the blade lays that sand down as a thin wedge along
+    its own swept band, where the next erase picks it up again."""
+    s = cumulative_length(poses[:, :2])
+    sc = garden.screed
+    return sc.feather_rise * np.clip((s - (s[-1] - sc.feather)) / sc.feather, 0.0, 1.0)
+
+
+def screed_coverage(passes: list[Pass], garden: Garden, cell: float = 2.0) -> tuple[float, np.ndarray]:
+    """Share of the open sand (sand area minus stone footprints) the blade passes over."""
+    W, D = garden.tray.width, garden.tray.depth
+    xs, ys = np.arange(cell / 2, W, cell), np.arange(cell / 2, D, cell)
+    X, Y = np.meshgrid(xs, ys)
+    grit = shapely.contains_xy(sand_region(garden), X, Y)
+    for poly in stone_polygons(garden):
+        grit &= ~shapely.contains_xy(poly, X, Y)
+    screeds = [p for p in passes if p.kind == "screed"]
+    if not screeds:
+        return 0.0, np.zeros(X.shape, bool)
+    half = garden.screed.width / 2
+    along = np.arange(-half, half + 1e-9, cell / 2)
+    pts = []
+    for p in screeds:
+        xy = resample(p.poses[:, :2], cell / 2)
+        h = poses_from_path(xy)[:, 2]
+        n = np.column_stack([-np.sin(h), np.cos(h)])
+        pts.append((xy[:, None, :] + along[None, :, None] * n[:, None, :]).reshape(-1, 2))
+    d, _ = cKDTree(np.vstack(pts)).query(np.column_stack([X.ravel(), Y.ravel()]), distance_upper_bound=cell)
+    swept = (d.reshape(X.shape) <= cell / 2 * math.sqrt(2)) & grit
+    return float(swept.sum() / grit.sum()), swept
 
 
 # --------------------------------------------------------------------------- travel
@@ -488,7 +566,12 @@ def groove_samples(passes: list[Pass], garden: Garden, trim_ends: float = 0.0):
 
 
 def coverage(passes: list[Pass], garden: Garden, cell: float = 2.0) -> tuple[float, np.ndarray]:
-    """Share of the open grit (sand area minus stone footprints) within half a pitch of a groove."""
+    """Share of the open grit (sand area minus stone footprints) within half a pitch of a groove.
+
+    Grooves are sampled every ``sample_step`` along their paths, so the midpoint between two
+    grooves one pitch apart can sit a hair over half a pitch from the nearest sample; half a
+    sample step of tolerance keeps those midpoints raked, while a missing groove (a gap of two
+    pitches, midpoint a full pitch away) still shows."""
     pts, _, _ = groove_samples(passes, garden)
     W, D = garden.tray.width, garden.tray.depth
     xs, ys = np.arange(cell / 2, W, cell), np.arange(cell / 2, D, cell)
@@ -499,7 +582,7 @@ def coverage(passes: list[Pass], garden: Garden, cell: float = 2.0) -> tuple[flo
     if len(pts) == 0:
         return 0.0, np.zeros(X.shape, bool)
     d, _ = cKDTree(pts).query(np.column_stack([X.ravel(), Y.ravel()]), distance_upper_bound=garden.rake.pitch)
-    raked = (d.reshape(X.shape) <= garden.rake.pitch / 2) & grit
+    raked = (d.reshape(X.shape) <= garden.rake.pitch / 2 + garden.planner.sample_step / 2) & grit
     return float(raked.sum() / grit.sum()), raked
 
 
@@ -527,7 +610,8 @@ def groove_spacing(passes: list[Pass], garden: Garden) -> dict:
 
 
 # --------------------------------------------------------------------------- program
-def build_program(garden: Garden, pattern: str = "lines", erase: bool = True, machine=None, **params) -> Program:
+def build_program(garden: Garden, pattern: str = "lines", erase: bool = True, machine=None,
+                  bare_erase: bool = False, **params) -> Program:
     if pattern not in PATTERNS:
         raise PatternError(f"unknown pattern {pattern!r}; choose from {sorted(PATTERNS)}")
     machine = machine or make_machine(garden)
@@ -535,7 +619,7 @@ def build_program(garden: Garden, pattern: str = "lines", erase: bool = True, ma
 
     strokes = PATTERNS[pattern](garden, **params)
     rakes, report.dropped_mm = rake_passes(machine, strokes)
-    screeds = screed_passes(machine) if erase else []
+    screeds = screed_passes(machine, bare_erase) if erase else []
     passes = screeds + rakes
     if not rakes:
         report.errors.append("pattern produced no rakeable strokes")
@@ -566,6 +650,7 @@ def build_program(garden: Garden, pattern: str = "lines", erase: bool = True, ma
     report.travel_mm = float(sum(cumulative_length(s.poses[:, :2])[-1] for s in steps if isinstance(s, Travel)))
     report.rotation_deg = float(np.degrees(np.abs(np.diff(everything[:, 2])).sum()))
     report.coverage, _ = coverage(rakes, garden)
+    report.erase_coverage, _ = screed_coverage(screeds, garden)
     report.spacing = groove_spacing(rakes, garden)
     for kind, q in report.spacing.items():
         if q[1] < 0.8 * garden.rake.pitch:
