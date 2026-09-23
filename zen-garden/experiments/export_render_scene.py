@@ -16,6 +16,7 @@ Run:  python experiments/export_render_scene.py [pattern]      (writes out/rende
 
 from __future__ import annotations
 
+import inspect
 import json
 import math
 import sys
@@ -26,7 +27,7 @@ import shapely
 from scipy.ndimage import binary_dilation, distance_transform_edt, minimum_filter
 from shapely.geometry import Polygon
 
-from karesansui import gcode, water
+from karesansui import gcode, render, water
 from karesansui.bonsai import grow, tuft_mesh
 from karesansui.config import poc_garden
 from karesansui.geometry import sand_region
@@ -163,10 +164,13 @@ def main(pattern: str = "ripples") -> None:
     for lan in g.lanterns:
         foot, low = footing(lan.xy, lan.radius)
         lanterns.append({"name": lan.name, "xy": list(lan.xy), "radius": lan.radius, "top": lan.height,
-                         "light": lan.light_height, "lumens": lan.lumens, "cct": lan.cct, "foot": foot, "low": low})
+                         "light": lan.light_height, "lumens": lan.lumens, "cct": lan.cct,
+                         "rgb": render.cct_to_rgb(lan.cct).round(4).tolist(),      # linear Rec.709, unit luminance
+                         "foot": foot, "low": low})
     tree, pot = next(f for f in g.features if f.kind == "tree"), next(f for f in g.features if f.kind == "pot")
     pot_c = np.asarray(Polygon(pot.outline).centroid.coords[0])
     arm = g.arm
+    amb_cct = inspect.signature(render.bake).parameters["ambient_cct"].default   # the colour the lux model gives it
     scene = {
         "pattern": pattern,
         "tray": {"width": W, "depth": D, "bed": S, "wall": g.tray.wall_height},
@@ -181,6 +185,9 @@ def main(pattern: str = "ripples") -> None:
                    "width": stream.width, "plunge": stream.plunge},
         "cascades": cascades,
         "lanterns": lanterns,
+        # the evening room light of the lux model: ambient_lux on a level surface, from above only
+        "evening": {"ambient_lux": g.lighting.ambient_lux, "ambient_cct": amb_cct,
+                    "ambient_rgb": render.cct_to_rgb(amb_cct).round(4).tolist()},
         "tree": {"height": tree.height, "canopy": [list(p) for p in tree.outline], "pot": pot_c.tolist(),
                  "ground": float(t.ground[int(pot_c[1]), int(pot_c[0])])},
         "arm": {"base": list(arm.base), "base_radius": arm.base_radius, "l1": arm.scara.link1, "l2": arm.scara.link2,

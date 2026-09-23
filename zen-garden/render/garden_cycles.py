@@ -8,7 +8,8 @@ height and outline is the model's, and renders it with physically based material
   - moss as hundreds of thousands of instanced leafy shoots, darker living moss near the water
     and brighter preserved moss beyond, on the ground the model computed;
   - water that refracts over a pebbled bed, cascades as aerated sheets with foam;
-  - granite lanterns lit by their own 2200 K LEDs, rocks with moss on their crowns, the two stones;
+  - granite lanterns whose paper windows give out their LEDs' 60 lm at 2200 K in the evening,
+    in the model's 15 lux of room light; rocks with moss on their crowns, the two stones;
   - the bonsai grown by karesansui.bonsai: plated bark on a tapering trunk, pine shoots on its twigs;
   - the SCARA arm in the pose it holds at the end of its last planned groove.
 
@@ -16,7 +17,7 @@ Every procedural texture is built here from nodes: nothing is downloaded.
 
 Run (Blender as a Python module: pip install bpy==5.0.1):
     python render/garden_cycles.py --scene out/render_scene --out out/renders \\
-        --views front,evening,stream,sand,arm --quality preview|final [--device GPU]
+        --views front,evening,stream,sand,arm,tree --quality draft|preview|local|final [--device GPU]
 """
 
 from __future__ import annotations
@@ -530,15 +531,17 @@ def make_materials(q):
                                                   N.link(N.bump(N.noise(N.coords("Object"), 500.0).outputs["Fac"], 0.3, 0.0004), b.inputs["Normal"])))
     M["plaster"] = material("plaster", lambda N, b, o: N.set(b, Base_Color=(0.62, 0.6, 0.56, 1), Roughness=0.95))
 
-    def glow(N, bsdf, out):
-        bb = N.new("ShaderNodeBlackbody")
-        bb.inputs["Temperature"].default_value = 2200.0
-        em = N.new("ShaderNodeEmission")
-        N.link(bb.outputs["Color"], em.inputs["Color"])
-        em.inputs["Strength"].default_value = 1.0
-        N.link(em.outputs["Emission"], out.inputs["Surface"])
-    M["glow"] = material("glow", glow)
     return M
+
+
+def paper_material(name, rgb):
+    """Washi in a firebox window: matt off-white, and when the lantern is on, the light its LED
+    sends out through the paper (strength set by lighting(); sampled from the outside face only)."""
+    def build(N, bsdf, out):
+        N.set(bsdf, Base_Color=(0.8, 0.76, 0.66, 1), Roughness=0.92, Emission_Color=(*rgb, 1.0), Emission_Strength=0.0)
+    m = material(name, build)
+    m.cycles.emission_sampling = "FRONT"
+    return m
 
 
 # ------------------------------------------------------------------ the garden
@@ -755,16 +758,26 @@ def build_lanterns(gd: Garden, M, lights):
         prism(f"lantern_{lan['name']}_roof", gd, x, y, base + fb1 + 0.025 * H, base + fb1 + 0.17 * H, r * 1.08, r * 0.12, 6, M["granite"])
         v, f = icosphere(2)
         jewel = mesh_object(f"lantern_{lan['name']}_jewel", [gd.V(x + p[0] * r * 0.2, y + p[1] * r * 0.2, base + fb1 + 0.19 * H + p[2] * r * 0.26) for p in v], f, mat=M["granite"])
-        win = prism(f"lantern_{lan['name']}_window", gd, x, y, base + fb0 + 0.02 * H, base + fb1 - 0.02 * H, r * 0.535, r * 0.535, 6, M["glow"], caps=False)
-        win.visible_shadow = False                       # seen by the camera only: the LED's light is the point light
-        win.visible_diffuse = win.visible_glossy = win.visible_transmission = win.visible_volume_scatter = False
-        ld = bpy.data.lights.new(f"led_{lan['name']}", "POINT")
-        ld.shadow_soft_size = 3 * MM
-        ld.use_temperature, ld.temperature = True, lan["cct"]
-        ob = bpy.data.objects.new(f"led_{lan['name']}", ld)
-        ob.location = gd.V(x, y, lan["light"])
-        bpy.context.scene.collection.objects.link(ob)
-        lights.append((ob, lan["lumens"], win))
+        # The LED sits inside the solid firebox, so its light reaches the garden only through the
+        # paper windows: they are the light source, giving out the lantern's lumens between them
+        paper = paper_material(f"paper_{lan['name']}", lan["rgb"])
+        area = panes(f"lantern_{lan['name']}_windows", gd, x, y, base + fb0 + 0.025 * H, base + fb1 - 0.025 * H, r * 0.535, 0.7, paper)
+        lights.append((paper, lan["lumens"] * LUX_TO_W / (math.pi * area)))     # Lambertian: radiance = flux / (pi A)
+
+
+def panes(name, gd: Garden, x, y, z0, z1, R, frac, mat):
+    """A paper pane over the middle `frac` of each face of the hexagonal firebox, which is left as
+    stone posts at the corners. Faces outward, a hair proud of the stone. Returns the pane area, m2."""
+    ang = np.linspace(0, 2 * math.pi, 6, endpoint=False) + math.pi / 6    # the hexagon prism() makes
+    c = [(x + R * math.cos(a), y + R * math.sin(a)) for a in ang]
+    verts, faces = [], []
+    for k in range(6):
+        (ax, ay), (bx, by) = c[k], c[(k + 1) % 6]
+        faces.append(tuple(range(len(verts), len(verts) + 4)))
+        for t, z in ((0.5 - frac / 2, z0), (0.5 + frac / 2, z0), (0.5 + frac / 2, z1), (0.5 - frac / 2, z1)):
+            verts.append(gd.V(ax + (bx - ax) * t, ay + (by - ay) * t, z))
+    mesh_object(name, verts, faces, mat=mat, smooth=False)
+    return 6 * frac * R * (z1 - z0) * MM * MM
 
 
 def prism(name, gd: Garden, x, y, z0, z1, r0, r1, sides, mat, caps=True):
@@ -1147,17 +1160,38 @@ def world_day():
     return w
 
 
-def world_evening():
+def world_evening(gd: Garden):
+    """The lux model's evening room light: an even glow from above (a lit ceiling), none from below,
+    so a level surface gets ambient_lux and a wall half of it, as in karesansui.render.bake."""
+    ev = gd.s["evening"]
     w = bpy.data.worlds.get("evening") or bpy.data.worlds.new("evening")
     w.use_nodes = True
     nt = w.node_tree
     nt.nodes.clear()
     N = Nodes(nt)
+    sep = N.new("ShaderNodeSeparateXYZ")
+    N.link(N.new("ShaderNodeTexCoord").outputs["Generated"], sep.inputs[0])       # the ray direction
     bg = N.new("ShaderNodeBackground")
-    bg.inputs["Color"].default_value = (0.012, 0.018, 0.035, 1)
-    bg.inputs["Strength"].default_value = 0.004
+    bg.inputs["Color"].default_value = (*ev["ambient_rgb"], 1)
+    radiance = ev["ambient_lux"] * LUX_TO_W / math.pi                            # E = pi L on a level surface
+    N.link(N.math("MULTIPLY", N.math("GREATER_THAN", sep.outputs["Z"], 0.0), radiance), bg.inputs["Strength"])
     N.link(bg.outputs[0], N.new("ShaderNodeOutputWorld").inputs["Surface"])
     return w
+
+
+def glare():
+    """Veiling glare of the lens round the lantern windows, which are ~11 stops brighter than the
+    sand the evening is exposed for (compositor, scene-linear, before the view transform)."""
+    ng = bpy.data.node_groups.get("glare")
+    if ng is None:
+        ng = bpy.data.node_groups.new("glare", "CompositorNodeTree")
+        ng.interface.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
+        gl = ng.nodes.new("CompositorNodeGlare")
+        for k, v in (("Type", "Fog Glow"), ("Threshold", 0.25), ("Strength", 0.35), ("Size", 0.5)):
+            gl.inputs[k].default_value = v
+        ng.links.new(ng.nodes.new("CompositorNodeRLayers").outputs["Image"], gl.inputs["Image"])
+        ng.links.new(gl.outputs["Image"], ng.nodes.new("NodeGroupOutput").inputs[0])
+    return ng
 
 
 LUX_TO_W = 1 / 25000.0            # scene irradiance (W/m2) per lux: sun strength 4 ~ 100 klx
@@ -1165,23 +1199,25 @@ LUX_TO_W = 1 / 25000.0            # scene irradiance (W/m2) per lux: sun strengt
 
 def lighting(gd, mode, lights, sun):
     sc = bpy.context.scene
+    vs = sc.view_settings
     if mode == "day":
         sc.world = world_day()
         sun.hide_render = False
-        sc.view_settings.exposure = 0.0
+        vs.exposure = 0.0
+        vs.use_white_balance = False
+        sc.render.use_compositing = False
     else:
-        sc.world = world_evening()
+        sc.world = world_evening(gd)
         sun.hide_render = True
-        # sunlit sand (~100 klx) to lantern-lit sand (~75 lux) is ~10.4 stops: expose for the lanterns
-        sc.view_settings.exposure = 10.2
-    for ob, lumens, win in lights:
-        # an isotropic LED of `lumens`: E = lumens / (4 pi d^2) lux; a point light of P watts gives
-        # P / (4 pi d^2) W/m2, so P = lumens x (W/m2 per lux). On by day too, where it is lost in the sun
-        ob.data.energy = lumens * LUX_TO_W
-    # the paper window 11 mm from the LED, transmitting half: luminance 0.5 E / pi -> emission strength
-    lumens = lights[0][1]
-    em = bpy.data.materials["glow"].node_tree.nodes["Emission"]
-    em.inputs["Strength"].default_value = 0.5 * lumens / (4 * math.pi * 0.011 ** 2) * LUX_TO_W
+        # sunlit sand (~100 klx) to lantern-lit sand (~75 lux) is ~10.4 stops: expose for the lanterns,
+        # white-balanced to the room light as a camera would be, so the 2200 K lanterns stay amber
+        vs.exposure = 10.2
+        vs.use_white_balance, vs.white_balance_temperature = True, gd.s["evening"]["ambient_cct"]
+        sc.compositing_node_group = glare()
+        sc.render.use_compositing = True
+    for paper, radiance in lights:
+        # lit for the evening; by day the lanterns are off and the windows are plain paper
+        paper.node_tree.nodes["Principled BSDF"].inputs["Emission Strength"].default_value = radiance if mode == "evening" else 0.0
 
 
 def add_sun(gd):

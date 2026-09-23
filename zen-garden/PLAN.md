@@ -32,7 +32,7 @@ A 70 × 45 cm garden in a walnut tray on a small table, seen from the front. The
 
 **See it photoreal.** `render/garden_cycles.py` rebuilds the same model in Blender and renders it with Cycles; the images are in `docs/renders/`.
 
-- **What comes from the model:** the ground, the simulated sand, the water levels and cascades, the rock and lantern positions, and the arm's pose. The bonsai is an informal-upright pine grown by `karesansui/bonsai.py` to fit the model's tree: every needle stays inside the canopy outline the arm keeps clear of (test).
+- **What comes from the model:** the ground, the simulated sand, the water levels and cascades, the rock and lantern positions, and the arm's pose. So does the evening light: each lantern's 60 lm at 2200 K leaves through its paper windows, and the room adds the 15 lux the lux model assumes (§3.6). The bonsai is an informal-upright pine grown by `karesansui/bonsai.py` to fit the model's tree: every needle stays inside the canopy outline the arm keeps clear of (test).
 - **What is picture-making:** the procedural materials (walnut, quartz sand, instanced moss shoots, granite, bark, needle sprays) and the stones lining the stream, which are placed by rule.
 - **Where it runs:** on a CPU (`--quality preview`, 1.5–10 minutes a view on 4 cores), or on a Colab GPU with `render/colab_render.sh`, which drives Google's Colab CLI.
 
@@ -163,7 +163,7 @@ A unit test repeats this over eight cycles, with the old erase as a negative con
 
 `docs/figures/poc_lux.png`.
 
-![The garden at dusk, lit only by the three lanterns](docs/renders/evening.jpg)
+![The garden in the evening: the three lanterns and the 15 lux of room light that the lux values below assume](docs/renders/evening.jpg)
 
 ![The model's own lantern-light render, from which the lux values below are computed](docs/figures/poc_render_hero.png)
 
