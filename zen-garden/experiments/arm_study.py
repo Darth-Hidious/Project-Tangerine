@@ -43,7 +43,7 @@ DRIVES = [
     Drive("Stepper + 5:1 belt", backlash=0.036, resolution=0.0225),
     Drive("Harmonic drive", backlash=0.017, resolution=0.022),
 ]
-DRAG_N = 0.5          # rake drag: skid friction (~60 g head, mu ~0.5) plus nine 2.5 mm tines; conservative
+DRAG_N = 0.5          # rake drag: skid friction (~60 g head, mu ~0.5) plus five 2.5 mm tines; an estimate
 
 
 def rake_poses(garden, machine):
@@ -78,7 +78,9 @@ def main() -> dict:
                                 [round(float(q[:, k].min()), 1), round(float(q[:, k].max()), 1)]
                                 for k in range(arm.n_joints)],
             "gravity_preloaded": [bool(v) for v in pre],
-            "max_holding_torque_Nm": [round(float(v), 3) for v in tau.max(axis=0)],
+            # the SCARA lift is prismatic: its slot is a force (N), every other slot a torque (N m)
+            "max_holding_load": [round(float(v), 3) for v in tau.max(axis=0)],
+            "holding_load_units": ["N" if (kind == "scara" and k == 2) else "N m" for k in range(arm.n_joints)],
             "wobble_mm": {},
         }
         if kind == "scara":

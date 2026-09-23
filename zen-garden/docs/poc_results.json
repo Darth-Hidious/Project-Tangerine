@@ -1,0 +1,145 @@
+{
+  "patterns": {
+    "lines": {
+      "rake_passes": 12,
+      "screed_passes": 17,
+      "rake_m": 2.4,
+      "screed_m": 3.63,
+      "coverage": 0.861,
+      "erase_coverage": 0.925,
+      "min_radius_mm": 28.5,
+      "warnings": [
+        "101 mm of raking below the soft radius 34 mm (inner tine slower than half speed)",
+        "132 mm of proposed raking was unreachable and dropped"
+      ],
+      "gcode_lines": 10914,
+      "machine_minutes": 10.01,
+      "sim_seconds": 6.8,
+      "volume_error_rel": 0.0,
+      "lost_mm3": 0.0,
+      "max_slope_excess_mm": 0.005,
+      "relief_mm": {
+        "min": -1.61,
+        "max": 1.44,
+        "std": 0.642
+      },
+      "sand_lux": {
+        "p5": 14.0,
+        "median": 45.3,
+        "p95": 173.7
+      }
+    },
+    "waves": {
+      "rake_passes": 11,
+      "screed_passes": 17,
+      "rake_m": 2.4,
+      "screed_m": 3.63,
+      "coverage": 0.86,
+      "erase_coverage": 0.925,
+      "min_radius_mm": 28.5,
+      "warnings": [
+        "101 mm of raking below the soft radius 34 mm (inner tine slower than half speed)",
+        "141 mm of proposed raking was unreachable and dropped"
+      ],
+      "gcode_lines": 10850,
+      "machine_minutes": 9.86,
+      "sim_seconds": 6.4,
+      "volume_error_rel": 0.0,
+      "lost_mm3": 0.0,
+      "max_slope_excess_mm": 0.005,
+      "relief_mm": {
+        "min": -1.6,
+        "max": 1.41,
+        "std": 0.646
+      },
+      "sand_lux": {
+        "p5": 14.0,
+        "median": 45.5,
+        "p95": 172.8
+      }
+    },
+    "ripples": {
+      "rake_passes": 5,
+      "screed_passes": 17,
+      "rake_m": 2.42,
+      "screed_m": 3.63,
+      "coverage": 0.865,
+      "erase_coverage": 0.925,
+      "min_radius_mm": 28.5,
+      "warnings": [
+        "101 mm of raking below the soft radius 34 mm (inner tine slower than half speed)"
+      ],
+      "gcode_lines": 9957,
+      "machine_minutes": 8.9,
+      "sim_seconds": 6.1,
+      "volume_error_rel": 0.0,
+      "lost_mm3": 0.0,
+      "max_slope_excess_mm": 0.005,
+      "relief_mm": {
+        "min": -1.61,
+        "max": 1.42,
+        "std": 0.647
+      },
+      "sand_lux": {
+        "p5": 13.9,
+        "median": 44.7,
+        "p95": 184.3
+      }
+    },
+    "spiral": {
+      "rake_passes": 12,
+      "screed_passes": 17,
+      "rake_m": 2.32,
+      "screed_m": 3.63,
+      "coverage": 0.827,
+      "erase_coverage": 0.925,
+      "min_radius_mm": 28.5,
+      "warnings": [
+        "101 mm of raking below the soft radius 34 mm (inner tine slower than half speed)"
+      ],
+      "gcode_lines": 10889,
+      "machine_minutes": 9.86,
+      "sim_seconds": 6.5,
+      "volume_error_rel": 0.0,
+      "lost_mm3": 0.0,
+      "max_slope_excess_mm": 0.005,
+      "relief_mm": {
+        "min": -1.65,
+        "max": 1.41,
+        "std": 0.631
+      },
+      "sand_lux": {
+        "p5": 14.0,
+        "median": 45.6,
+        "p95": 178.2
+      }
+    }
+  },
+  "groove": {
+    "x_mm": 430.0,
+    "peak_to_trough_mm": 2.46
+  },
+  "water": {
+    "open_water_m2": 0.025898674484416042,
+    "wet_moss_m2": 0.04763886998613403,
+    "evaporation_l_day": [
+      0.10139342630707845,
+      0.14802002351187055
+    ],
+    "autonomy_days": [
+      6.755842731776113,
+      9.862572322700847
+    ],
+    "system_head_m": 0.2177928081109186,
+    "hydraulic_power_w": 0.03553790587788293,
+    "film_mm": 0.9957435415444948,
+    "film_speed_ms": 0.41844777222494084,
+    "froude": 4.233826016149923,
+    "example_pump_unthrottled": {
+      "h_max_m": 3.0,
+      "q_max_lpm": 4.0,
+      "flow_lpm": 2.72,
+      "head_m": 0.96
+    }
+  }
+}
