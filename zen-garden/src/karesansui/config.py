@@ -22,8 +22,7 @@ WALLS = ("south", "north", "west", "east")
 class Tray:
     width: float = 1200.0        # inner x extent
     depth: float = 800.0         # inner y extent
-    wall_height: float = 100.0   # above the base plate
-    back_wall_height: float = 0.0   # back and left walls, if taller (a backdrop that holds a hill); 0 = same
+    wall_height: float = 100.0   # above the base plate, the same all round
     bed_depth: float = 35.0      # nominal gravel surface above the base plate
 
 

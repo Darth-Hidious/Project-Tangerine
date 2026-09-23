@@ -8,6 +8,10 @@ Heights are mm above the sand surface. Water levels come from the stream's ``lev
 slopes towards its lip, a plunge pool below a cascade sits at the level after the drop, the pool
 at its own height. The ground never comes closer than BANK above the water it borders, so no
 water stands above its banks.
+
+The frame is one height all round. At the walls the ground stays RIM_FREEBOARD below its rim and
+climbs away from them no faster than RIM_SLOPE, so soil and water stay inside the box; the hill and
+the spring rise above the rim only further in, as the mounds of a saikei tray do.
 """
 
 from __future__ import annotations
@@ -17,7 +21,7 @@ from dataclasses import dataclass
 import numpy as np
 import shapely
 from scipy.ndimage import distance_transform_edt, gaussian_filter, maximum_filter
-from shapely.geometry import LineString, Point, Polygon
+from shapely.geometry import LineString, MultiLineString, Point, Polygon
 
 from .config import Garden
 from .geometry import sand_region, stone_polygons
@@ -25,8 +29,16 @@ from .water import cascades, living_moss_zone, stream_profile
 
 SAND, WATER, LIVING, PRESERVED, ROCK, BRIDGE, STONE, KERB, OUTSIDE = range(9)
 BANK = 5.0            # ground at the water's edge stands this much above the water (mm)
+LIP = 4.0             # ... over this width from the edge (mm)
+BANK_FALL = 0.5       # beyond the lip a bank falls away no faster than this (rise over run)
 KERB_WIDTH, KERB_HEIGHT = 5.0, 3.0     # the low rim of the sealed sand basin
-VALLEY = 0.9          # steepest slope (rise over run) of the ground climbing away from water
+VALLEY = 0.6          # the ground climbs away from water no faster than this (rise over run) ...
+STEEP = 1.2           # ... unless a higher bank beside it needs more; even then never faster than this
+RIM_FREEBOARD = 5.0   # at the walls the ground stays this far below the rim (mm)
+RIM_SLOPE = 0.8       # and climbs away from them no faster than this
+CORNER = 12.0         # mm: how far the ground rounds off into the tray's corners
+SMOOTH = 3.0          # mm: the land is rounded off at this scale (before the moss cushions go on)
+CUSHION = 3.4         # mm: the most the moss cushions (the fine noise) add to the ground
 DEPTH = {"reach": 8.0, "plunge": 22.0, "pool": 25.0}   # water depth (mm) over the bed
 HILL_RAMP = 90.0      # the hill reaches full height this far inside its outline
 
@@ -49,6 +61,23 @@ def _noise(shape, sigma_cells, seed):
 def _smoothstep(t):
     t = np.clip(t, 0.0, 1.0)
     return t * t * (3 - 2 * t)
+
+
+def _along_wall(a, b, W: float, D: float, tol: float = 1.0) -> bool:
+    """Whether the segment a-b runs along one of the tray's walls."""
+    return any(abs(a[k] - v) < tol and abs(b[k] - v) < tol for k, v in ((0, 0.0), (0, W), (1, 0.0), (1, D)))
+
+
+def rim_cap(garden: Garden, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
+    """Highest the ground may stand at X, Y (mm above the sand) and stay inside the frame. The
+    distance to the walls is a soft minimum, never more than the true one, so the ground rounds
+    off into the corners instead of meeting them in a crease."""
+    W, D = garden.tray.width, garden.tray.depth
+    rim = garden.tray.wall_height - garden.tray.bed_depth
+    k = CORNER
+    d = np.stack([X, W - X, Y, D - Y])
+    d_wall = d.min(axis=0) - k * np.log(np.exp(-(d - d.min(axis=0)) / k).sum(axis=0))
+    return rim - RIM_FREEBOARD + RIM_SLOPE * np.maximum(d_wall, 0.0)
 
 
 def water_levels(garden: Garden, X: np.ndarray, Y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -100,30 +129,59 @@ def terrain(garden: Garden, dx: float = 2.0, seed: int = 11, overlays: bool = Tr
     water = ~np.isnan(level) & ~sand
     land = ~sand & ~water
 
-    # ground: rises gently away from the sand, plus the hill, plus moss cushions
+    # ground: rises gently away from the sand, plus the hill, plus slow undulations
+    cap = rim_cap(garden, X, Y)
     d_sand = distance_transform_edt(~sand) * dx
     ground = np.minimum(0.35 * d_sand, 24.0)
     for f in garden.features:
         if f.kind == "hill":
+            # the hill climbs from its open edges; where it meets the walls the rim rule shapes it
             poly = Polygon(f.outline)
             inside = shapely.contains(poly, pts).reshape(shape)
-            d_in = np.where(inside, shapely.distance(poly.exterior, pts).reshape(shape), 0.0)
+            ring = list(f.outline) + [f.outline[0]]
+            edges = [(a, b) for a, b in zip(ring, ring[1:]) if not _along_wall(a, b, W, D)]
+            rise_from = MultiLineString(edges) if edges else poly.exterior
+            d_in = np.where(inside, shapely.distance(rise_from, pts).reshape(shape), 0.0)
             ground += f.height * _smoothstep(d_in / HILL_RAMP)
-    ground += 1.4 * _noise(shape, 2.0 / dx, seed + 2) + 3.0 * _noise(shape, 25.0 / dx, seed + 3)
-    ground += 2.0 * np.abs(_noise(shape, 3.0 / dx, seed + 12))
+    ground += 3.0 * _noise(shape, 25.0 / dx, seed + 3)
+    ground = np.where(land, np.minimum(ground, cap - CUSHION), ground)
 
-    # banks: never below the water they border, sloping down to the general ground away from it
+    # banks and valleys. Every water surface raises a bank round itself that falls away no faster
+    # than BANK_FALL, and caps the ground beside it to climb no faster than VALLEY. Taken over all
+    # the water at once (in 1 mm steps of level) both are continuous, so no cliff forms where the
+    # nearest water changes from one reach to a lower one.
+    lip = np.zeros(shape, bool)
     if water.any():
+        q = np.round(np.where(water, level, np.nan))
+        bank, valley, steep = np.full(shape, -np.inf), np.full(shape, np.inf), np.full(shape, np.inf)
+        for L in np.unique(q[water]):
+            d = distance_transform_edt(q != L) * dx
+            bank = np.maximum(bank, L + BANK - BANK_FALL * np.maximum(d - LIP, 0.0))
+            valley = np.minimum(valley, L + BANK + VALLEY * d)
+            steep = np.minimum(steep, L + BANK + STEEP * np.maximum(d - dx, 0.0))
+        # the lip holds, exactly, the highest water within 6 mm: beside a cascade both levels are near
         d_water, (iw, jw) = distance_transform_edt(~water, return_indices=True)
-        d_water *= dx
-        # the highest water close by, not just the nearest: beside a cascade both levels are near
         highest = maximum_filter(np.where(water, level, -np.inf), size=2 * int(round(6.0 / dx)) + 1)
         near_level = np.maximum(level[iw, jw], highest)
-        bank = near_level + BANK - 0.2 * np.maximum(d_water - 6.0, 0.0)
-        valley = near_level + BANK + VALLEY * d_water            # the ground may not climb faster than this
-        ground = np.where(land, np.maximum(np.minimum(ground, valley), bank), ground)
+        lip = land & (d_water * dx <= LIP)
+        # where a high bank meets lower water, the drop becomes a steep slope rather than a cliff
+        # (the lips are put back below, so a bank too close to lower water still holds its own)
+        ground = np.where(land, np.minimum(np.maximum(np.minimum(ground, valley), bank), steep), ground)
+
+    # round off the creases where those rules meet (smoothing the land only), add the moss
+    # cushions, then put back exactly what must hold: the lip of every bank and the rim
+    sigma = SMOOTH / dx
+    weight = gaussian_filter(land.astype(float), sigma)
+    smooth = gaussian_filter(np.where(land, ground, 0.0), sigma) / np.maximum(weight, 1e-9)
+    ground = np.where(land, smooth, ground)
+    ground += 1.4 * _noise(shape, 2.0 / dx, seed + 2) + 2.0 * np.abs(_noise(shape, 3.0 / dx, seed + 12))  # <= CUSHION
+    if water.any():
+        ground = np.where(lip, np.maximum(ground, near_level + BANK), ground)
         d_in = distance_transform_edt(water) * dx                # a rounded bed, deepest mid-channel
         ground = np.where(water, level - depth * _smoothstep(d_in / 8.0), ground)
+
+    # the walls: nothing on the land may stand above the rim at the wall (the banks must fit too)
+    ground = np.where(land, np.minimum(ground, cap), ground)
 
     # the sand basin's kerb, then the sand surface itself at 0
     kerb = land & (d_sand <= KERB_WIDTH)

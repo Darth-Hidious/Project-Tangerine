@@ -138,7 +138,7 @@ def main() -> dict:
     wr = water.report(g)
     arm = g.arm
     data = {
-        "tray": {"width": W, "depth": D, "bed": S, "wall": g.tray.wall_height, "backWall": g.tray.back_wall_height},
+        "tray": {"width": W, "depth": D, "bed": S, "wall": g.tray.wall_height},
         "terrain": ground,
         "sand": {"x0": x0, "y0": y0, "nx": x1 - x0, "ny": y1 - y0, "dx": SAND_DX,
                  "mask": b64(mask.astype(np.uint8)), "outline": [list(p) for p in g.sand_outline]},

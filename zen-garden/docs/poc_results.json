@@ -14,7 +14,7 @@
       ],
       "gcode_lines": 10914,
       "machine_minutes": 10.01,
-      "sim_seconds": 6.7,
+      "sim_seconds": 6.6,
       "volume_error_rel": 0.0,
       "lost_mm3": 0.0,
       "max_slope_excess_mm": 0.005,
@@ -24,9 +24,9 @@
         "std": 0.642
       },
       "sand_lux": {
-        "p5": 14.0,
-        "median": 59.7,
-        "p95": 269.9
+        "p5": 15.0,
+        "median": 76.3,
+        "p95": 327.5
       }
     },
     "waves": {
@@ -43,7 +43,7 @@
       ],
       "gcode_lines": 10850,
       "machine_minutes": 9.86,
-      "sim_seconds": 6.4,
+      "sim_seconds": 6.6,
       "volume_error_rel": 0.0,
       "lost_mm3": 0.0,
       "max_slope_excess_mm": 0.005,
@@ -53,9 +53,9 @@
         "std": 0.646
       },
       "sand_lux": {
-        "p5": 14.0,
-        "median": 60.0,
-        "p95": 268.9
+        "p5": 15.0,
+        "median": 76.5,
+        "p95": 328.7
       }
     },
     "ripples": {
@@ -71,7 +71,7 @@
       ],
       "gcode_lines": 9957,
       "machine_minutes": 8.9,
-      "sim_seconds": 6.1,
+      "sim_seconds": 6.0,
       "volume_error_rel": 0.0,
       "lost_mm3": 0.0,
       "max_slope_excess_mm": 0.005,
@@ -81,9 +81,9 @@
         "std": 0.647
       },
       "sand_lux": {
-        "p5": 13.9,
-        "median": 59.2,
-        "p95": 270.2
+        "p5": 15.0,
+        "median": 75.2,
+        "p95": 327.7
       }
     },
     "spiral": {
@@ -99,7 +99,7 @@
       ],
       "gcode_lines": 10889,
       "machine_minutes": 9.86,
-      "sim_seconds": 6.5,
+      "sim_seconds": 6.4,
       "volume_error_rel": 0.0,
       "lost_mm3": 0.0,
       "max_slope_excess_mm": 0.005,
@@ -109,9 +109,9 @@
         "std": 0.631
       },
       "sand_lux": {
-        "p5": 14.0,
-        "median": 58.1,
-        "p95": 264.0
+        "p5": 15.0,
+        "median": 77.9,
+        "p95": 319.2
       }
     }
   },

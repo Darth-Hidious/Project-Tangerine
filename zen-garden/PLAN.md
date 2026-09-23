@@ -9,16 +9,16 @@
 
 ## 1. What it is
 
-A 70 × 45 cm garden in a walnut tray on a small table, seen from the front:
+A 70 × 45 cm garden in a walnut tray on a small table, seen from the front. The tray's frame is one height all round.
 
-- **Left (wet side).** The ground rises into a hill in the back-left corner, held by taller back and left walls.
+- **Left (wet side).** The ground rises into a hill in the back-left corner. It stands above the frame's rim in the middle and steps down to 5 mm below it at the walls.
   - A bonsai about 30 cm tall stands on the hill, its pot sunk into the soil under the moss.
   - A spring comes out beside the tree. The stream (467 mm) zigzags down the hill over four cascades (12, 30, 11 and 9 mm) into small plunge pools, passes under a bridge and reaches the pool at the front.
   - Living moss grows along the water.
 - **Centre.** 9.1 dm² of fine white quartz sand, 25 mm deep, holds a pair of stones. That is 2.3 L, about 3.3 kg at an assumed 1450 kg/m³.
 - **Right (dry side).** The arm stands on a walnut column above the electronics drawer. It erases the sand and rakes a new pattern on command.
 - **Everywhere else.** Preserved (dry) moss.
-- **Light.** Three stone lanterns (80–90 mm) with warm 60 lm LEDs light the grooves in the evening.
+- **Light.** Three small stone lanterns, their tops 90 mm above the sand, with warm 60 lm LEDs light the grooves in the evening.
 
 ![Plan view of the proof of concept](docs/figures/poc_layout.png)
 
@@ -157,7 +157,7 @@ A unit test repeats this over eight cycles, with the old erase as a negative con
 
 `docs/figures/poc_lux.png`.
 
-- **What the lanterns give the sand.** Each of the three lanterns has a 60 lm LED 48–55 mm above the sand; the room adds 15 lux. The raked sand gets **14 / 58–60 / 264–270 lux** (5th percentile / median / 95th). That low, warm light is what makes the grooves read in the renders.
+- **What the lanterns give the sand.** Each of the three lanterns has a 60 lm LED 55–65 mm above the sand; the room adds 15 lux. The raked sand gets **15 / 75–78 / 319–329 lux** (5th percentile / median / 95th). That low, warm light is what makes the grooves read in the renders.
 - **What the plants need.** Treat the lanterns as decoration: one gives about 480 lux at 100 mm and 120 lux at 200 mm.
   - *Bonsai:* care guides for indoor bonsai (Ficus and similar) ask for bright light for 6 hours or more a day, in the thousands of lux.
   - *Moss:* sources disagree by an order of magnitude.
@@ -250,8 +250,12 @@ What follows from it:
 ### 4.3 Materials and the wet/dry split
 
 - **Tray.** Walnut frame on a plywood base.
-  - The back and left walls stand 85 mm above the sand (110 mm above the base) to hold the hill; the front and right walls 35 mm.
-  - The hill rises about 70 mm above the sand at its highest. It is soil over a drainage layer, with the tree's pot sunk into it.
+  - The frame is one height all round: 72 mm above the base, 47 mm above the sand. The four boards are mitred at the corners.
+    - At every wall the ground stays at least 5 mm below the rim. Away from the wall it climbs no faster than 0.8 mm per mm, so the hill and the spring rise above the rim only further in.
+    - 72 mm is the lowest frame that holds the spring under those two rules: its bank must stand 65 mm above the sand 29 mm from the back wall. In a 60 mm frame that bank is 12 mm short (test).
+  - The hill rises 71 mm above the sand at its highest, 24 mm above the rim, and the tree's pot sits at 66 mm. It is soil over a drainage layer, with the tree's pot sunk into it.
+  - Face with stones any bank that stands more than 9 mm above the water beside it. That is about 5% of the bank, almost all of it at the sides of the cascades, where it reaches 38 mm. The rest stands 5–8 mm above its water.
+  - The lanterns stand on the moss, and the one on the hill stands on a base stone. Their heights in the config are above the sand, since that is what the arm must clear. Each lantern's own height is that less its footing: 56 mm for the spring lantern, 66 and 76 mm for the other two (test).
   - The wet side (stream, pool, living moss) is lined with EPDM or sealed with epoxy.
   - The sand is a separate sealed basin with a 5–10 mm kerb.
   - All fasteners are stainless.
@@ -322,7 +326,7 @@ Rough estimates in euros from typical hobby prices. **Not checked against curren
 3. **The arm is the most expensive and fiddliest part** (belts, homing, the slip ring). Phase 1 is where the budget goes.
 4. **Noise** from steppers and the pump in a quiet room. StealthChop helps, and you run cycles when you're there to watch anyway.
 5. **Living things change.** The bonsai grows toward the arm's envelope, and moss spreads or dies back. Trim, re-measure, re-check.
-6. **The hill has to stay put.** About 70 mm of wet soil in the corner needs the taller walls, a drainage layer and rocks at its foot, or it will slump into the stream.
+6. **The hill has to stay put.** It rises 24 mm above the rim, and its slopes run at about 31°, up to 43°. Wet soil won't hold that on its own. Build it over a shaped core (carved foam or a mesh former) with a drainage layer and rocks at its foot, and pin the moss until it roots, or it will slump into the stream.
 7. **Water chemistry.** Minerals concentrate and algae appears. Top up with distilled water, keep the reservoir dark and clean it weekly.
 8. **Cycle time (about 10 min)** is half lifting. It is fine for watching and easy to cut later.
 

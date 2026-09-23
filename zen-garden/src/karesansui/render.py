@@ -109,9 +109,6 @@ def build_scene(garden: Garden, sand_h: np.ndarray, dx: float, rim: float = 30.0
     alb[:] = (0.30, 0.22, 0.15)                    # oak table
     alb *= (1 + 0.08 * _noise((ny, nx), 3 / dx, seed))[..., None]
     h[frame] = base + garden.tray.wall_height
-    back = garden.tray.back_wall_height
-    if back > garden.tray.wall_height:              # the backdrop walls (back and left)
-        h[frame & ((YY >= D) | (XX < 0))] = base + back
     walnut = np.array([0.14, 0.08, 0.045])
     alb[frame] = walnut * (1 + 0.1 * _noise((ny, nx), 2 / dx, seed + 1))[frame][:, None]
 

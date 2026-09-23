@@ -8,8 +8,8 @@
 [tray]                   # the unit's inner footprint
 width = 700.0
 depth = 450.0
-wall_height = 60.0
-back_wall_height = 110.0  # the back and left walls hold the hill: 85 mm above the sand
+wall_height = 72.0       # one height all round: 47 mm above the sand. The ground stays 5 mm below
+                         # the rim at the walls; the hill and the spring rise above it further in
 bed_depth = 25.0         # fine sand needs far less depth than gravel: grooves are ~2-4 mm
 
 [sand]
@@ -115,11 +115,11 @@ tube_id_mm = 6.0
 tube_len_m = 0.8
 
 [[lanterns]]              # every lantern is below the 100 mm travel lift, so the arm passes over them
-name = "spring lantern"
+name = "spring lantern"   # on the hill, its foot about 34 mm above the sand: a 56 mm lantern
 xy = [238.0, 408.0]
 radius = 22.0
-height = 80.0
-light_height = 48.0
+height = 90.0             # heights are above the sand, like everything the arm must clear
+light_height = 65.0
 [[lanterns]]
 name = "back lantern"
 xy = [470.0, 424.0]
