@@ -8,11 +8,13 @@ clear of. The 3D viewer and the photoreal renderer both draw the tree grown here
   - primary branches spiralling up at the golden angle (none pointing at the viewer in the lower
     third, as a bonsai is styled), the lowest the longest, each drooping a little and levelling
     out, ramifying into alternating side twigs that fork again;
-  - needle tufts along the outer twigs, pointing up and out, so each branch carries a pad that
-    is flat underneath and domed on top, with the branch structure visible below it.
+  - pine shoots where a pine carries its needles: a rosette at the end of every twig and a few
+    along its outer half, pointing out and up, so each branch carries a lumpy, domed pad that is
+    ragged and shaded underneath, with the twigs showing.
 
-Every needle tip stays inside the canopy outline and under the tree's height, so the picture
-never shows more tree than the clearance check covers. Lengths in mm; heights above the sand.
+Every needle tip of every shoot, placed exactly as the pictures place it (shoot_frames), stays
+inside the canopy outline and under the tree's height, so the picture never shows more tree than
+the clearance check covers. Lengths in mm; heights above the sand.
 """
 
 from __future__ import annotations
@@ -41,8 +43,27 @@ class Bonsai:
         return np.asarray(self.tufts, float).reshape(-1, 8)
 
     def needle_tips(self) -> np.ndarray:
-        t = self.tuft_array
-        return t[:, :3] + t[:, 3:6] * t[:, 6:7]
+        """The tip of every needle of every shoot, as drawn: (tufts x needles, 3)."""
+        return _tips(self.tuft_array)
+
+
+def shoot_frames(tufts: np.ndarray) -> np.ndarray:
+    """Rotations (n, 3, 3) that stand the unit shoot of tuft_mesh (stem along +z) on each tuft's
+    axis, turned by its twist about it. The renderers place the shoots with these."""
+    t = np.asarray(tufts, float).reshape(-1, 8)
+    a = t[:, 3:6] / np.linalg.norm(t[:, 3:6], axis=1, keepdims=True)
+    ref = np.where(np.abs(a[:, 2:3]) < 0.95, [[0.0, 0.0, 1.0]], [[1.0, 0.0, 0.0]])
+    u = np.cross(ref, a)
+    u /= np.linalg.norm(u, axis=1, keepdims=True)
+    v = np.cross(a, u)
+    c, s = np.cos(t[:, 7:8]), np.sin(t[:, 7:8])
+    return np.stack([c * u + s * v, c * v - s * u, a], axis=2)          # columns: where x, y, z go
+
+
+def _tips(tufts: np.ndarray) -> np.ndarray:
+    t = np.asarray(tufts, float).reshape(-1, 8)
+    local = np.einsum("nij,mj->nmi", shoot_frames(t), SHOOT_TIPS) * t[:, 6, None, None]
+    return (t[:, None, :3] + local).reshape(-1, 3)
 
 
 def _spline(ctrl, n):
@@ -99,22 +120,30 @@ def grow(garden: Garden, ground_at, seed: int = 7) -> Bonsai:
     trunk = np.column_stack([plan, z0 + 0.86 * H * t])
     rb = H / 12
     r_trunk = rb * (1 - 0.85 * t) ** 1.3 * (1 + 0.5 * np.exp(-t / 0.035))
-    tree_out.branches.append((trunk, r_trunk))
+    # where the ground falls away under the flare (the tree stands on a slope), the base carries on
+    # down into it, widening, instead of standing on the slope with its underside open
+    ring = [ground_at(bx + 1.25 * r_trunk[0] * math.cos(a), by + 1.25 * r_trunk[0] * math.sin(a))
+            for a in np.linspace(0, 2 * np.pi, 24, endpoint=False)]
+    z_low = min(min(ring), z0) - 3.0
+    below = np.linspace(z_low, z0, 5)[:-1]
+    foot = np.column_stack([np.full((4, 2), [bx, by]), below])
+    r_foot = r_trunk[0] * (1 + 0.25 * (z0 - below) / max(z0 - z_low, 1e-9))
+    tree_out.branches.append((np.vstack([foot, trunk]), np.concatenate([r_foot, r_trunk])))
 
     def trunk_at(tt):
         i = min(int(tt * (len(t) - 1)), len(t) - 2)
         f = tt * (len(t) - 1) - i
         return trunk[i] + f * (trunk[i + 1] - trunk[i]), r_trunk[i] + f * (r_trunk[i + 1] - r_trunk[i])
 
-    # ---- surface roots (nebari): short, thick, half in the moss
+    # ---- surface roots (nebari): out of the flare, tapering fast, sunk in the moss to their crowns
     for k in range(9):
         th = 2 * np.pi * k / 9 + rng.uniform(-0.25, 0.25)
-        L = rb * rng.uniform(1.3, 2.0)
-        s = np.linspace(0, 1, 10)
-        px, py = bx + np.cos(th) * L * s, by + np.sin(th) * L * s
-        pz = np.array([ground_at(x, y) for x, y in zip(px, py)]) + 0.25 * rb * (1 - s) ** 2 - 1.5 * s
-        pz[0] = max(pz[0], z0 + 0.35 * rb)
-        tree_out.branches.append((np.column_stack([px, py, pz]), rb * (0.5 * (1 - s) ** 1.2 + 0.1)))
+        s = np.linspace(0, 1, 12)
+        dist = r_trunk[0] * 0.5 + rb * rng.uniform(1.6, 2.4) * s          # from the trunk's axis
+        px, py = bx + np.cos(th) * dist, by + np.sin(th) * dist
+        rr = rb * (0.36 * (1 - s) ** 1.4 + 0.06)
+        pz = np.array([ground_at(x, y) for x, y in zip(px, py)]) + 0.2 * rr
+        tree_out.branches.append((np.column_stack([px, py, pz]), rr))
 
     def reach(p, d):
         """How far from p along d before the canopy ellipse."""
@@ -139,27 +168,52 @@ def grow(garden: Garden, ground_at, seed: int = 7) -> Bonsai:
                 twig(p2, _turn(h, sgn * rng.uniform(0.6, 0.95)), (0.5 if depth == 0 else 0.55) * length,
                      max(0.25, r0 * 0.55), parts, depth + 1, rise + rng.uniform(0.0, 0.12))
 
-    def foliage(parts, n_skip, size=NEEDLE):
-        """Tufts over the outer twigs, thick in the middle of the pad and thin at its edge: a pad
-        flat underneath and domed on top."""
-        pts = []
-        for tw, _ in parts[n_skip:]:
-            seg = np.linalg.norm(np.diff(tw, axis=0), axis=1).sum()
-            for s in np.linspace(0.3, 1.0, max(2, int(seg * 0.7 / 3.0))):
-                pts.append(_along(tw, s)[0])
-        pts = np.array(pts)
-        c = pts[:, :2].mean(0)
-        R = np.linalg.norm(pts[:, :2] - c, axis=1).max() + 1e-9
+    def foliage(parts, n_bare, size=NEEDLE):
+        """Shoots where a pine carries its needles: a rosette at the end of every twig (a leading
+        shoot and a ring round it), a crown of older shoots grown up from the twig ends towards the
+        middle of the pad, and a few shoots along the outer half of the twigs (not of the first
+        n_bare parts, the branch itself). They point out and up, flatter at the rim of the pad and
+        steeper in its middle: a lumpy dome on top, ragged and shaded underneath. The crown twigs
+        are added to `parts`."""
+        ends = np.array([tw[-1] for tw, _ in parts])
+        c = ends[:, :2].mean(0)
+        R = np.linalg.norm(ends[:, :2] - c, axis=1).max() + 1e-9
         tufts = []
-        for q in pts:
-            off = (q[:2] - c) / R
-            dome = float(np.clip(1 - (off @ off) / 1.1, 0, 1))
-            for layer in range(1 + int(dome > 0.3) + int(dome > 0.7)):
-                axis = np.array([0.55 * off[0] * (1 - dome), 0.55 * off[1] * (1 - dome), 1.0]) + rng.normal(0, 0.16, 3)
-                axis /= np.linalg.norm(axis)
-                z = q[2] + layer * (3.0 + 4.0 * dome)
-                tufts.append([q[0], q[1], z, *axis, size * (0.8 + 0.35 * dome) * rng.uniform(0.85, 1.12),
-                              rng.uniform(0, 2 * np.pi)])
+
+        def shoot(q, d, elev, length):
+            axis = np.r_[d * math.cos(elev), math.sin(elev)] + rng.normal(0, 0.1, 3)
+            tufts.append([*q, *(axis / np.linalg.norm(axis)), length, rng.uniform(0, 2 * np.pi)])
+
+        def rosette(q, h, dome, lift):
+            shoot(q, h, math.radians(30 + 35 * dome + lift), size * rng.uniform(0.95, 1.1))
+            n = int(rng.integers(4, 7))
+            for j in range(n):
+                shoot(q, _turn(h, 2 * np.pi * j / n + rng.uniform(-0.3, 0.3)),
+                      math.radians(rng.uniform(12, 40) + 30 * dome + lift), size * rng.uniform(0.7, 0.92))
+
+        crowns = []
+        for i, (tw, _) in enumerate(parts):
+            tip, u = _along(tw, 1.0)
+            h = u[:2] / max(np.linalg.norm(u[:2]), 1e-9)
+            off = (tip[:2] - c) / R
+            dome = float(np.clip(1 - off @ off, 0, 1))            # 1 in the middle of the pad, 0 at its rim
+            rosette(tip, h, dome, 0.0)
+            if dome > 0.25:
+                # a shoot of earlier years grown up out of the twig end, with its own rosette: the
+                # pad's crown, highest in its middle
+                up = size * (0.5 + 0.7 * dome) * rng.uniform(0.8, 1.2)
+                top = tip + np.r_[h * 0.35 * up, up]
+                crowns.append((np.array([tip, 0.5 * (tip + top), top]), np.array([0.5, 0.4, 0.3])))
+                rosette(top, h, dome, 15.0)
+            if i < n_bare:
+                continue
+            seg = np.linalg.norm(np.diff(tw, axis=0), axis=1).sum()
+            for k, s in enumerate(np.linspace(0.5, 0.88, max(1, int(seg / 9)))):
+                q, u2 = _along(tw, s)
+                h2 = u2[:2] / max(np.linalg.norm(u2[:2]), 1e-9)
+                shoot(q, _turn(h2, (1 if k % 2 else -1) * rng.uniform(0.5, 1.2)),
+                      math.radians(rng.uniform(35, 70)), size * rng.uniform(0.75, 0.95))
+        parts += crowns
         return tufts
 
     def branch(p, d, L, r_start):
@@ -184,7 +238,7 @@ def grow(garden: Garden, ground_at, seed: int = 7) -> Bonsai:
         return parts, foliage(parts, 1)
 
     def fits(tufts):
-        tips = np.array([np.array(q[:3]) + np.array(q[3:6]) * q[6] for q in tufts])
+        tips = _tips(tufts)
         return bool(np.all(shapely.contains_xy(canopy, tips[:, 0], tips[:, 1]))) and tips[:, 2].max() <= z0 + H
 
     # ---- primary branches: golden-angle spiral, lowest longest, no front branch low down
@@ -226,12 +280,17 @@ def grow(garden: Garden, ground_at, seed: int = 7) -> Bonsai:
 def tuft_mesh(n: int = 44, seed: int = 3) -> tuple[np.ndarray, np.ndarray]:
     """One pine shoot, size 1 along +z: a short stem with needles in fascicles all along it,
     radiating forwards and out like a bottle brush. Scale it by the needle length."""
+    v, f, _ = _shoot(n, seed)
+    return v, f
+
+
+def _shoot(n: int, seed: int):
     rng = np.random.default_rng(seed)
-    verts, faces = [], []
+    verts, faces, tips = [], [], []
     stem = 0.45
     for k in range(n):
         at = stem * (k / n) ** 0.7                      # denser towards the tip of the shoot
-        phi = math.radians(rng.uniform(28, 72) * (1 - 0.35 * at / stem))
+        phi = math.radians(rng.uniform(25, 65) * (1 - 0.3 * at / stem))
         az = k * 2.39996 + rng.uniform(-0.2, 0.2)
         L = rng.uniform(0.62, 0.9)
         d = np.array([math.sin(phi) * math.cos(az), math.sin(phi) * math.sin(az), math.cos(phi)])
@@ -247,7 +306,13 @@ def tuft_mesh(n: int = 44, seed: int = 3) -> tuple[np.ndarray, np.ndarray]:
         for j in range(3):
             a = i0 + 2 * j
             faces += [(a, a + 1, a + 3), (a, a + 3, a + 2)]
+        tips += [i0 + 6, i0 + 7]
     i0 = len(verts)                                     # the stem itself
     verts += [[-0.02, 0, 0], [0.02, 0, 0], [0.012, 0, stem + 0.05], [-0.012, 0, stem + 0.05]]
     faces += [(i0, i0 + 1, i0 + 2), (i0, i0 + 2, i0 + 3)]
-    return np.array(verts), np.array(faces)
+    tips += [i0 + 2, i0 + 3]
+    verts = np.array(verts)
+    return verts, np.array(faces), verts[tips]
+
+
+SHOOT_TIPS = _shoot(44, 3)[2]         # the needle tips of the unit shoot tuft_mesh() draws

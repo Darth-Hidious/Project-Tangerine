@@ -28,7 +28,7 @@ from scipy.ndimage import binary_dilation, distance_transform_edt, minimum_filte
 from shapely.geometry import Polygon
 
 from karesansui import gcode, render, water
-from karesansui.bonsai import grow, tuft_mesh
+from karesansui.bonsai import grow, shoot_frames, tuft_mesh
 from karesansui.config import poc_garden
 from karesansui.geometry import sand_region
 from karesansui.landscape import LIVING, PRESERVED, WATER, terrain
@@ -115,7 +115,8 @@ def main(pattern: str = "ripples") -> None:
                         branch_pts=np.concatenate([b[0] for b in tree_model.branches]).astype(np.float32),
                         branch_r=np.concatenate([b[1] for b in tree_model.branches]).astype(np.float32),
                         branch_len=np.array([len(b[0]) for b in tree_model.branches], np.int32),
-                        tufts=tree_model.tuft_array.astype(np.float32), tuft_verts=tv.astype(np.float32),
+                        tufts=tree_model.tuft_array.astype(np.float32),
+                        tuft_rot=shoot_frames(tree_model.tuft_array).astype(np.float32), tuft_verts=tv.astype(np.float32),
                         tuft_faces=tf.astype(np.int32), base=np.array(tree_model.base, np.float32))
 
     # ---- the sand after a simulated cycle, at the simulation's own 0.5 mm

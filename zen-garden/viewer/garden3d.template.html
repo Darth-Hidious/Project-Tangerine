@@ -847,7 +847,7 @@ M.needle = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, 
   const P = b64(B.pts, Float32Array), R = b64(B.r, Float32Array), T = b64(B.tufts, Float32Array);
   const local = (i) => V(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]).sub(base);
   // trunk, roots, branches and twigs: tubes along their points, frames carried along the path
-  const pos = [], uv = [], idx = [];
+  const pos = [], uv = [], idx = [], seams = [];
   let k = 0;
   for (const n of B.len) {
     const r0 = R[k], radial = r0 > 8 ? 16 : r0 > 2 ? 8 : 5, start = pos.length / 3;
@@ -859,8 +859,9 @@ M.needle = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, 
       const Bn = T3.clone().cross(Nrm);
       if (prev) run += p.distanceTo(prev);
       prev = p;
+      seams.push(pos.length / 3, pos.length / 3 + radial);  // a ring's first and last vertex: one point, two UVs
       for (let a = 0; a <= radial; a++) {
-        const ang = a / radial * Math.PI * 2, r = R[k + i] * (1 + (r0 > 8 ? 0.08 * noise3(p.x * 0.1, p.y * 0.1 + a, p.z * 0.1) : 0));
+        const ang = a / radial * Math.PI * 2, r = R[k + i] * (1 + (r0 > 8 ? 0.08 * noise3(p.x * 0.1, p.y * 0.1 + a % radial, p.z * 0.1) : 0));
         const v = p.clone().addScaledVector(Nrm, Math.cos(ang) * r).addScaledVector(Bn, Math.sin(ang) * r);
         pos.push(v.x, v.y, v.z); uv.push(a / radial, run / (2 * Math.PI * Math.max(r0, 0.6)));
       }
@@ -874,6 +875,13 @@ M.needle = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, 
   const wood = new THREE.BufferGeometry();
   wood.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); wood.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
   wood.setIndex(idx); wood.computeVertexNormals();
+  {                                                    // one normal for both copies of a seam vertex, or the seam shows
+    const nv = wood.attributes.normal, a3 = new THREE.Vector3(), b3 = new THREE.Vector3();
+    for (let s = 0; s < seams.length; s += 2) {
+      a3.fromBufferAttribute(nv, seams[s]).add(b3.fromBufferAttribute(nv, seams[s + 1])).normalize();
+      nv.setXYZ(seams[s], a3.x, a3.y, a3.z); nv.setXYZ(seams[s + 1], a3.x, a3.y, a3.z);
+    }
+  }
   const woodMesh = new THREE.Mesh(wood, M.bark); woodMesh.castShadow = woodMesh.receiveShadow = true; treeGroup.add(woodMesh);
   // needle tufts: a pine shoot, needles radiating along a short stem (one triangle each), lighter at the tips
   const tp = [], tc = [], r = rng(9);

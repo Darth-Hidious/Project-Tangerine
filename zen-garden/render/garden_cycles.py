@@ -32,7 +32,7 @@ from pathlib import Path
 import bpy
 import bmesh                   # after bpy: the module sets up Blender's own packages
 import numpy as np
-from mathutils import Euler, Vector, noise
+from mathutils import Euler, Matrix, Vector, noise
 
 MM = 0.001                     # the model is in mm, the scene in metres (for the sky and the lens)
 QUALITY = {                    # moss shoots per mm2, samples, resolution
@@ -151,8 +151,9 @@ def rock_shape(seed, rough=0.22, subdiv=4, flat=0.0):
     return out, f
 
 
-def tube(points, radii, sides=12, bumps=0.0, seed=0.0, lobes=0.0):
-    """A tube along the polyline `points` (N, 3, metres) with per-point radii; UVs run around and along."""
+def tube(points, radii, sides=12, bumps=0.0, seed=0.0, lobes=0.0, bump_scale=900.0):
+    """A tube along the polyline `points` (N, 3, metres) with per-point radii; UVs run around and along.
+    `bumps` roughens the radius with noise of `bump_scale` features per metre along the tube."""
     P = np.asarray(points, float)
     N = len(P)
     T = np.gradient(P, axis=0)
@@ -170,7 +171,8 @@ def tube(points, radii, sides=12, bumps=0.0, seed=0.0, lobes=0.0):
         for k in range(sides + 1):
             a = 2 * math.pi * k / sides
             t = i / max(N - 1, 1)
-            r = radii[i] * (1 + bumps * noise.noise(Vector((P[i][0] * 900 + seed, P[i][1] * 900 + math.cos(a) * 2, P[i][2] * 900 + math.sin(a) * 2)))
+            r = radii[i] * (1 + bumps * noise.noise(Vector((P[i][0] * bump_scale + seed, P[i][1] * bump_scale + math.cos(a) * 2,
+                                                           P[i][2] * bump_scale + math.sin(a) * 2)))
                             + lobes * math.sin(2 * a + 4 * t + seed) + 0.6 * lobes * math.sin(3 * a - 3 * t))
             verts.append(P[i] + r * (math.cos(a) * Nrm + math.sin(a) * B))
             uv.append((k / sides, length[i] / (2 * math.pi * max(radii[0], 1e-4))))
@@ -341,17 +343,20 @@ def make_materials(q):
         grains = N.voronoi(p, 3200.0)                                 # ~0.3 mm quartz grains
         speck = N.new("ShaderNodeSeparateColor")
         N.link(grains.outputs["Color"], speck.inputs["Color"])
-        tint = N.math("MULTIPLY", N.sock(speck.outputs, "Red"), 0.12)
-        col = N.mix(tint, (0.60, 0.575, 0.51), (0.45, 0.42, 0.36))
+        # every grain its own shade, washed quartz from grey to creamy white (albedo ~0.6 on
+        # average), and one in seventy dark (feldspar, mica)
+        col = N.ramp(N.sock(speck.outputs, "Red"), [(0.0, (0.47, 0.45, 0.41)), (0.5, (0.6, 0.58, 0.53)),
+                                                    (1.0, (0.71, 0.7, 0.66))])
         fines = N.noise(p, 900.0, 3.0, 0.6)
-        col = N.mix(N.math("MULTIPLY", fines.outputs["Fac"], 0.2), col, (0.66, 0.64, 0.58))
-        col = N.mix(N.math("GREATER_THAN", N.sock(speck.outputs, "Blue"), 0.988), col, (0.1, 0.095, 0.09))
+        col = N.mix(N.math("MULTIPLY", fines.outputs["Fac"], 0.15), col, (0.66, 0.64, 0.58))
+        col = N.mix(N.math("GREATER_THAN", N.sock(speck.outputs, "Blue"), 0.986), col, (0.1, 0.095, 0.09))
         N.link(col, bsdf.inputs["Base Color"])
         glint = N.math("GREATER_THAN", N.sock(speck.outputs, "Green"), 0.965)
         N.link(N.math("SUBTRACT", 0.9, N.math("MULTIPLY", glint, 0.75)), bsdf.inputs["Roughness"])
         N.link(N.math("MULTIPLY", glint, 0.9), bsdf.inputs["Specular IOR Level"])
+        # each grain a rounded dome, a tenth of a millimetre high: the low sun picks every one out
         h = N.math("SUBTRACT", 1.0, N.math("POWER", grains.outputs["Distance"], 0.6))
-        N.link(N.bump(h, 0.35, 0.00012), bsdf.inputs["Normal"])
+        N.link(N.bump(h, 0.8, 0.0001), bsdf.inputs["Normal"])
     M["sand"] = material("sand", sand)
 
     def moss_leaf(tip, base, variety, patch):
@@ -404,7 +409,7 @@ def make_materials(q):
         n2 = N.noise(p, 900.0, 2.0, 0.5)
         h = N.math("ADD", n1.outputs["Fac"], N.math("MULTIPLY", n2.outputs["Fac"], 0.25))
         N.set(bsdf, Base_Color=(0.9, 0.97, 0.95, 1), Roughness=0.015, IOR=1.333, Transmission_Weight=1.0)
-        N.link(N.bump(h, 0.1, 0.0006), bsdf.inputs["Normal"])
+        N.link(N.bump(h, 0.35, 0.0006), bsdf.inputs["Normal"])
     M["water"] = material("water", water)
 
     def sheet(N, bsdf, out):
@@ -840,14 +845,17 @@ def build_tree(gd: Garden, M):
     B = gd.bonsai
     pts, rad, lens = B["branch_pts"], B["branch_r"], B["branch_len"]
     verts, faces, uvs, off, k = [], [], [], 0, 0
-    for n in lens:
+    for i, n in enumerate(lens):
         P, R = pts[k:k + n], rad[k:k + n]
         k += n
         if n < 2:
             continue
-        sides = 24 if R[0] > 8 else 12 if R[0] > 2 else 6
-        v, f, uv = tube(np.array([gd.V(*p) for p in P]), R * MM, sides=sides,
-                        bumps=0.12 if R[0] > 8 else 0.06, seed=float(k), lobes=0.09 if R[0] > 8 else 0.0)
+        # the trunk (first) is lobed and gnarled at the scale of its plates; roots and branches are
+        # rounder. Bump noise coarser than the vertex spacing, or it aliases into facets
+        trunk = i == 0
+        sides = 48 if trunk else 16 if R[0] > 2 else 6
+        v, f, uv = tube(np.array([gd.V(*p) for p in P]), R * MM, sides=sides, bumps=0.07 if trunk else 0.04,
+                        seed=float(k), lobes=0.09 if trunk else 0.0, bump_scale=70.0 if trunk else 150.0)
         verts.append(v)
         faces.append(f + off)
         uvs.append(uv)
@@ -856,11 +864,9 @@ def build_tree(gd: Garden, M):
     coll = new_collection("tuft", link=False)
     ob = mesh_object("tuft_shape", B["tuft_verts"] * MM, B["tuft_faces"], mat=M["needles"], coll=coll, smooth=True)
     T = B["tufts"]
-    rot = []
-    for x, y, z, axx, axy, axz, size, twist in T:
-        q = Vector((axx, axy, axz)).to_track_quat("Z", "Y")
-        q = q @ Euler((0, 0, float(twist))).to_quaternion()
-        rot.append(tuple(q.to_euler()))
+    # each shoot stood on its axis by the generator's own frame, so the needles drawn are the
+    # needles karesansui.bonsai checked against the canopy
+    rot = [tuple(Matrix(R.tolist()).to_euler()) for R in B["tuft_rot"]]
     points = np.array([tuple(gd.V(x, y, z)) for x, y, z in T[:, :3]])
     return instance_cloud("bonsai_needles", points, np.array(rot), T[:, 6], coll)
 
@@ -1246,7 +1252,7 @@ VIEWS = {   # camera position, target (garden mm), lens (mm), f-stop, focus targ
     "stream": dict(pos=(350, 0, 250), target=(120, 255, 25), lens=50, fstop=8, focus=(150, 250, 20)),
     "sand": dict(pos=(318, 36, 58), target=(372, 250, 6), lens=55, fstop=18, focus=(360, 195, 3)),
     "arm": dict(pos=(860, -250, 430), target=(470, 250, 80), lens=50, fstop=8, focus=(420, 330, 30)),
-    "tree": dict(pos=(370, 60, 300), target=(85, 385, 175), lens=42, fstop=8, focus=(80, 390, 150)),
+    "tree": dict(pos=(382, -195, 330), target=(78, 380, 200), lens=40, fstop=8, focus=(80, 390, 150)),
 }
 
 
