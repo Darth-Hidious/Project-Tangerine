@@ -1,0 +1,102 @@
+# Reference design for the in-silico build.
+#
+# Units: mm, degrees, seconds. Origin: inner south-west corner of the tray, x along the
+# 1200 mm side, y along the 800 mm side, z up from the base plate. The viewer stands south.
+#
+# The stones below are an EXAMPLE composition (a san-zon triad plus one low stone),
+# drawn to realistic sizes. Replace the outlines with your real stones, measured from a
+# top-down photo, before trusting any collision or ring geometry.
+
+[tray]
+width = 1200.0
+depth = 800.0
+wall_height = 100.0
+bed_depth = 35.0          # 3-4 cm is enough for ~1 cm grooves; halves the grit vs. the original 6 cm
+
+[grit]
+name = "Edelsplitt 2/5, crushed granite"
+repose_deg = 37.0         # Phase 0: measure with the funnel-cone test
+bulk_density = 1500.0     # Phase 0: weigh one litre
+grain_mm = 3.5
+albedo = 0.45
+
+[rake]
+n_tines = 5
+pitch = 25.0
+tine_width = 5.0
+depth = 8.0
+bar_margin = 3.0
+bar_thickness = 12.0
+skid_gap = 10.0
+skid_length = 40.0
+skid_width = 30.0         # narrow and centred: a full-width skid swings into the walls on turns
+hang = 25.0
+float_travel = 40.0
+mode = "skid"
+
+[screed]
+width = 110.0
+overlap = 10.0
+thickness = 6.0
+
+[gantry]
+rapid_speed = 150.0
+rake_speed = 30.0
+screed_speed = 40.0
+z_speed = 15.0
+a_speed = 120.0
+accel = 400.0
+junction_deviation = 0.05
+travel_clearance = 15.0
+rake_clearance = 12.0
+
+[planner]
+wall_clearance = 5.0
+stone_clearance = 12.0
+sample_step = 2.0
+min_stroke = 40.0
+closed_overlap = 60.0
+
+[lighting]
+ambient_lux = 10.0
+
+[[lighting.strips]]
+wall = "south"
+[[lighting.strips]]
+wall = "north"
+[[lighting.strips]]
+wall = "west"
+[[lighting.strips]]
+wall = "east"
+
+# --- Stones -------------------------------------------------------------------------
+[[stones]]
+name = "shuseki (main, upright)"
+group = "triad"
+rings = 1
+height = 150.0
+outline = [[758, 460], [770, 436], [810, 430], [855, 435], [884, 465],
+           [880, 505], [850, 527], [800, 526], [765, 505]]
+
+[[stones]]
+name = "west flank"
+group = "triad"
+rings = 1
+height = 75.0
+outline = [[666, 438], [678, 418], [713, 416], [740, 428], [746, 454],
+           [733, 478], [700, 482], [672, 468]]
+
+[[stones]]
+name = "east flank"
+group = "triad"
+rings = 1
+height = 60.0
+outline = [[890, 430], [903, 410], [937, 410], [960, 428], [961, 452],
+           [943, 468], [911, 470], [892, 455]]
+
+[[stones]]
+name = "hanare (low, solitary)"
+rings = 1
+height = 45.0
+outline = [[282, 292], [295, 270], [330, 266], [368, 276], [380, 300],
+           [368, 324], [332, 332], [296, 322]]

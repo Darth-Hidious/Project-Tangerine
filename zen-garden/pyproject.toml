@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "karesansui"
+version = "0.1.0"
+description = "In-silico twin of a gantry-raked tabletop zen garden: patterns, validated toolpaths, G-code, gravel simulation, lighting renders and a Home Assistant interface."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "numba>=0.59",
+    "scipy>=1.11",
+    "shapely>=2.0",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+mqtt = ["paho-mqtt>=2.0"]
+cad = ["manifold3d>=2.4"]
+dev = ["pytest>=8", "pyyaml>=6"]
+
+[project.scripts]
+karesansui = "karesansui.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
