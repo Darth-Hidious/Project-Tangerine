@@ -8,8 +8,9 @@
 [tray]                   # the unit's inner footprint
 width = 700.0
 depth = 450.0
-wall_height = 72.0       # one height all round: 47 mm above the sand. The ground stays 5 mm below
-                         # the rim at the walls; the hill and the spring rise above it further in
+wall_height = 55.0       # one height all round: 30 mm above the sand. The ground stays 5 mm below
+                         # the rim at the walls; the hill and the spring rise above it further in.
+                         # 55 is the lowest that holds the spring, with the spring rock behind it
 bed_depth = 25.0         # fine sand needs far less depth than gravel: grooves are ~2-4 mm
 
 [sand]
@@ -147,7 +148,7 @@ rings = 1
 height = 30.0
 outline = [[334, 166], [341, 157], [355, 155], [367, 163], [366, 176], [352, 182], [338, 178]]
 
-[[features]]              # springs from the hill under the tree, zig-zags down it over three cascades
+[[features]]              # springs from the hill under the tree, zig-zags down it over four cascades
 name = "stream"
 kind = "stream"
 width = 44.0
@@ -203,11 +204,11 @@ outline = [
 ]
 
 [[features]]
-name = "spring rock"
-kind = "rock"
+name = "spring rock"       # stands in the back of the spring pool, sealed into the liner: it holds
+kind = "rock"              # the water on the side where the ground must drop to the rim
 height = 90.0
 outline = [
-    [136, 416], [150, 406], [168, 410], [172, 426], [150, 432],
+    [124, 400], [176, 400], [184, 418], [170, 436], [150, 441], [130, 436], [120, 418],
 ]
 
 [[features]]

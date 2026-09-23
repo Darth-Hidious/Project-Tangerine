@@ -32,6 +32,7 @@ BANK = 5.0            # ground at the water's edge stands this much above the wa
 LIP = 4.0             # ... over this width from the edge (mm)
 BANK_FALL = 0.5       # beyond the lip a bank falls away no faster than this (rise over run)
 KERB_WIDTH, KERB_HEIGHT = 5.0, 3.0     # the low rim of the sealed sand basin
+SAND_SLOPE = 1.0      # the ground climbs away from the kerb no faster than this: no cliff at the sand
 VALLEY = 0.6          # the ground climbs away from water no faster than this (rise over run) ...
 STEEP = 1.2           # ... unless a higher bank beside it needs more; even then never faster than this
 RIM_FREEBOARD = 5.0   # at the walls the ground stays this far below the rim (mm)
@@ -78,6 +79,18 @@ def rim_cap(garden: Garden, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
     d = np.stack([X, W - X, Y, D - Y])
     d_wall = d.min(axis=0) - k * np.log(np.exp(-(d - d.min(axis=0)) / k).sum(axis=0))
     return rim - RIM_FREEBOARD + RIM_SLOPE * np.maximum(d_wall, 0.0)
+
+
+def bank_heights(garden: Garden, t: "Terrain") -> np.ndarray:
+    """What holds the water back at each cell: the ground, or, where a rock stands, the rock's top.
+    Rocks at the water's edge are set into the liner and sealed to it, as in any built pond."""
+    X, Y = np.meshgrid(t.x, t.y)
+    h = t.ground.copy()
+    for f in garden.features:
+        if f.kind == "rock":
+            m = shapely.contains_xy(Polygon(f.outline), X, Y)
+            h[m] = np.maximum(h[m], f.height)
+    return h
 
 
 def water_levels(garden: Garden, X: np.ndarray, Y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -167,6 +180,8 @@ def terrain(garden: Garden, dx: float = 2.0, seed: int = 11, overlays: bool = Tr
         # where a high bank meets lower water, the drop becomes a steep slope rather than a cliff
         # (the lips are put back below, so a bank too close to lower water still holds its own)
         ground = np.where(land, np.minimum(np.maximum(np.minimum(ground, valley), bank), steep), ground)
+    # and where a bank's shoulder reaches the sand, it comes down to the kerb as a slope
+    ground = np.where(land, np.minimum(ground, KERB_HEIGHT + SAND_SLOPE * np.maximum(d_sand - KERB_WIDTH, 0.0)), ground)
 
     # round off the creases where those rules meet (smoothing the land only), add the moss
     # cushions, then put back exactly what must hold: the lip of every bank and the rim

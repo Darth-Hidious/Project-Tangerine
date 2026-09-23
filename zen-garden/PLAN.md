@@ -5,11 +5,11 @@
 - **Where the numbers come from.** Every number is computed by the twin in this repository and written to `docs/*.json` by the scripts in `experiments/`, is taken from a cited datasheet, or is labelled as an estimate.
 - **The weak spot.** The sand model's free parameters are guesses until Phase 0. The numbers that depend on them are called out as such.
 
-![Lantern-lit render of the simulated garden after a ripples cycle](docs/figures/poc_render_hero.png)
+![Photoreal render of the garden, built from the model: frame, moss, stream, sand grooves after a ripples cycle, the arm](docs/renders/front.jpg)
 
 ## 1. What it is
 
-A 70 × 45 cm garden in a walnut tray on a small table, seen from the front. The tray's frame is one height all round.
+A 70 × 45 cm garden in a walnut tray on a small table, seen from the front. The tray's frame is one height all round, 30 mm above the sand.
 
 - **Left (wet side).** The ground rises into a hill in the back-left corner. It stands above the frame's rim in the middle and steps down to 5 mm below it at the walls.
   - A bonsai about 30 cm tall stands on the hill, its pot sunk into the soil under the moss.
@@ -29,6 +29,12 @@ A 70 × 45 cm garden in a walnut tray on a small table, seen from the front. The
 - the stream and its cascades;
 - a bonsai-height slider that reports the tree's clearance from the arm;
 - a synthesised brook sound.
+
+**See it photoreal.** `render/garden_cycles.py` rebuilds the same model in Blender and renders it with Cycles; the images are in `docs/renders/`.
+
+- **What comes from the model:** the ground, the simulated sand, the water levels and cascades, the rock, lantern and tree positions, and the arm's pose.
+- **What is picture-making:** the procedural materials (walnut, quartz sand, instanced moss shoots, granite, bark, needle sprays) and the stones lining the stream, which are placed by rule.
+- **Where it runs:** on a CPU (`--quality preview`, 1.5–10 minutes a view on 4 cores), or on a Colab GPU with `render/colab_render.sh`, which drives Google's Colab CLI.
 
 ## 2. Decisions at a glance
 
@@ -157,7 +163,11 @@ A unit test repeats this over eight cycles, with the old erase as a negative con
 
 `docs/figures/poc_lux.png`.
 
-- **What the lanterns give the sand.** Each of the three lanterns has a 60 lm LED 55–65 mm above the sand; the room adds 15 lux. The raked sand gets **15 / 75–78 / 319–329 lux** (5th percentile / median / 95th). That low, warm light is what makes the grooves read in the renders.
+![The garden at dusk, lit only by the three lanterns](docs/renders/evening.jpg)
+
+![The model's own lantern-light render, from which the lux values below are computed](docs/figures/poc_render_hero.png)
+
+- **What the lanterns give the sand.** Each of the three lanterns has a 60 lm LED 55–65 mm above the sand; the room adds 15 lux. The raked sand gets **18–20 / 79–82 / 348–352 lux** (5th percentile / median / 95th). That low, warm light is what makes the grooves read in the renders.
 - **What the plants need.** Treat the lanterns as decoration: one gives about 480 lux at 100 mm and 120 lux at 200 mm.
   - *Bonsai:* care guides for indoor bonsai (Ficus and similar) ask for bright light for 6 hours or more a day, in the thousands of lux.
   - *Moss:* sources disagree by an order of magnitude.
@@ -250,10 +260,11 @@ What follows from it:
 ### 4.3 Materials and the wet/dry split
 
 - **Tray.** Walnut frame on a plywood base.
-  - The frame is one height all round: 72 mm above the base, 47 mm above the sand. The four boards are mitred at the corners.
+  - The frame is one height all round: 55 mm above the base, 30 mm above the sand. The four boards are mitred at the corners.
     - At every wall the ground stays at least 5 mm below the rim. Away from the wall it climbs no faster than 0.8 mm per mm, so the hill and the spring rise above the rim only further in.
-    - 72 mm is the lowest frame that holds the spring under those two rules: its bank must stand 65 mm above the sand 29 mm from the back wall. In a 60 mm frame that bank is 12 mm short (test).
-  - The hill rises 71 mm above the sand at its highest, 24 mm above the rim, and the tree's pot sits at 66 mm. It is soil over a drainage layer, with the tree's pot sunk into it.
+    - The spring rock stands in the back of the spring pool, sealed into the liner, and holds the water on that side. The ground there must drop to the rim, so without the rock the bank could not hold the spring.
+    - With the rock, 55 mm is the lowest frame that holds the spring. At 54 mm the pool's edge beside the rock is 0.2 mm short. With the rock as first drawn (36 × 26 mm, not reaching round the pool), a 55 mm frame leaves the bank behind the spring 12 mm short (test).
+  - The hill rises 65 mm above the sand at its highest, 35 mm above the rim, and the tree's pot sits at 63 mm. It is soil over a drainage layer, with the tree's pot sunk into it.
   - Face with stones any bank that stands more than 9 mm above the water beside it. That is about 5% of the bank, almost all of it at the sides of the cascades, where it reaches 38 mm. The rest stands 5–8 mm above its water.
   - The lanterns stand on the moss, and the one on the hill stands on a base stone. Their heights in the config are above the sand, since that is what the arm must clear. Each lantern's own height is that less its footing: 56 mm for the spring lantern, 66 and 76 mm for the other two (test).
   - The wet side (stream, pool, living moss) is lined with EPDM or sealed with epoxy.
@@ -326,7 +337,7 @@ Rough estimates in euros from typical hobby prices. **Not checked against curren
 3. **The arm is the most expensive and fiddliest part** (belts, homing, the slip ring). Phase 1 is where the budget goes.
 4. **Noise** from steppers and the pump in a quiet room. StealthChop helps, and you run cycles when you're there to watch anyway.
 5. **Living things change.** The bonsai grows toward the arm's envelope, and moss spreads or dies back. Trim, re-measure, re-check.
-6. **The hill has to stay put.** It rises 24 mm above the rim, and its slopes run at about 31°, up to 43°. Wet soil won't hold that on its own. Build it over a shaped core (carved foam or a mesh former) with a drainage layer and rocks at its foot, and pin the moss until it roots, or it will slump into the stream.
+6. **The hill has to stay put.** It rises 35 mm above the rim, and its slopes run at about 33°, up to 43°. Wet soil won't hold that on its own. Build it over a shaped core (carved foam or a mesh former) with a drainage layer and rocks at its foot, and pin the moss until it roots, or it will slump into the stream.
 7. **Water chemistry.** Minerals concentrate and algae appears. Top up with distilled water, keep the reservoir dark and clean it weekly.
 8. **Cycle time (about 10 min)** is half lifting. It is fine for watching and easy to cut later.
 
@@ -341,7 +352,8 @@ Rough estimates in euros from typical hobby prices. **Not checked against curren
   - The evaporation formula is for swimming pools, applied to a 2.6 dm² stream.
   - The moss term (wet half the time, still-water factor) is a guess worth ±50%.
   - The stream depth is a smooth-bed lower bound, and the model has nothing to say about sound.
-- **Light.** Lambertian surfaces, no inter-reflection. Lux values are first order; the renders are illustrations.
+- **Light.** Lambertian surfaces, no inter-reflection. Lux values are first order.
+- **The photoreal renders** show the model's geometry faithfully. Their materials are procedural stand-ins, not measurements: real walnut, moss and stone will differ in colour and texture. The stones along the stream are placed by rule.
 - **Not modelled at all:** noise, dust, plant health, how it feels to watch.
 
 ## 9. What changed from the Gemini plan
@@ -367,5 +379,8 @@ python experiments/arm_study.py     # §3.1
 python experiments/comb_study.py    # §3.3
 python experiments/erase_study.py   # §3.4 (about two minutes)
 python experiments/export_3d.py     # the 3D viewer, docs/garden3d.html (about a minute)
+python experiments/export_render_scene.py                       # the model -> out/render_scene
+python render/garden_cycles.py --views front,evening --quality preview   # photoreal, CPU (pip install bpy==5.0.1)
+render/colab_render.sh              # the same on a Colab GPU, through the Colab CLI
 pytest                              # the checks listed in README.md
 ```
