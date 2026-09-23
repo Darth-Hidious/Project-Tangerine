@@ -154,10 +154,10 @@ def test_poc_travel_lifts_over_everything_in_reach(poc):
 
 
 def test_obstacle_taller_than_the_lift_is_reported(poc):
-    tall = dataclasses.replace(poc.lanterns[1], height=150.0)
-    garden = dataclasses.replace(poc, lanterns=(poc.lanterns[0], tall))
-    msgs = ArmMachine(garden, "scara").obstacle_clearance()
-    assert len(msgs) == 1 and "front-right lantern" in msgs[0]
+    lanterns = tuple(dataclasses.replace(l, height=150.0) if l.name == "front-right lantern" else l
+                     for l in poc.lanterns)
+    msgs = ArmMachine(dataclasses.replace(poc, lanterns=lanterns), "scara").obstacle_clearance()
+    assert len(msgs) == 1 and "front-right lantern" in msgs[0]            # below the links: head only
 
 
 def test_bonsai_is_clear_only_while_it_stays_out_of_reach(poc):
@@ -169,7 +169,7 @@ def test_bonsai_is_clear_only_while_it_stays_out_of_reach(poc):
     moved = dataclasses.replace(tree, outline=tuple((x + 100.0, y) for x, y in tree.outline))
     garden = dataclasses.replace(poc, features=tuple(moved if f is tree else f for f in poc.features))
     msgs = ArmMachine(garden, "scara").obstacle_clearance()
-    assert len(msgs) == 1 and "bonsai" in msgs[0]
+    assert len(msgs) == 2 and all("bonsai" in m for m in msgs)            # taller than the links: both
 
 
 @pytest.mark.parametrize("kind", ["scara", "articulated"])
@@ -180,3 +180,17 @@ def test_erase_reaches_all_but_the_stone_gaps_and_the_edge_strip(poc, kind):
     prog = build_program(poc, "ripples", machine=ArmMachine(poc, kind))
     assert prog.report.erase_coverage > 0.9
     assert any(p.label == "screed:frame" for p in prog.passes)
+
+
+def test_joint_limits_keep_the_arm_off_the_tree_corner(poc):
+    """The sweep check over the joint-limit box (the limits are also hard stops): the tree clears
+    the head and the links by more than the margin; with the joints free over their mechanical
+    range the same tree is inside the arm's sweep."""
+    tree = next(f for f in poc.features if f.kind == "tree")
+    from shapely.geometry import Polygon
+    head, links = ArmMachine(poc, "scara").sweep_clearance(Polygon(tree.outline))
+    assert head > 10.0 and links > 10.0
+    free = dataclasses.replace(poc.arm.scara, j1_limits=(-170.0, 170.0), j2_limits=(-150.0, 150.0))
+    head_w, links_w = ArmMachine(dataclasses.replace(poc, arm=dataclasses.replace(poc.arm, scara=free)),
+                                 "scara").sweep_clearance(Polygon(tree.outline))
+    assert min(head_w, links_w) < 0.0

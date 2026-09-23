@@ -27,7 +27,7 @@ from shapely.geometry import LineString, Point, Polygon
 
 from .config import Garden
 from .geometry import sand_region, stone_polygons
-from .water import living_moss_zone
+from .landscape import BRIDGE, KERB, LIVING, OUTSIDE, PRESERVED, ROCK, SAND, STONE, WATER, terrain
 
 # ---------------------------------------------------------------------------------- colour
 _XYZ_TO_SRGB = np.array([[3.2406, -1.5372, -0.4986],
@@ -109,34 +109,32 @@ def build_scene(garden: Garden, sand_h: np.ndarray, dx: float, rim: float = 30.0
     alb[:] = (0.30, 0.22, 0.15)                    # oak table
     alb *= (1 + 0.08 * _noise((ny, nx), 3 / dx, seed))[..., None]
     h[frame] = base + garden.tray.wall_height
+    back = garden.tray.back_wall_height
+    if back > garden.tray.wall_height:              # the backdrop walls (back and left)
+        h[frame & ((YY >= D) | (XX < 0))] = base + back
     walnut = np.array([0.14, 0.08, 0.045])
     alb[frame] = walnut * (1 + 0.1 * _noise((ny, nx), 2 / dx, seed + 1))[frame][:, None]
 
-    # zones
-    sand = shapely.contains_xy(sand_region(garden), XX, YY) & inside
-    water = np.zeros_like(inside)
-    for f in garden.features:
-        if f.kind == "stream":
-            water |= shapely.contains_xy(LineString(f.outline).buffer(f.width / 2), XX, YY)
-        elif f.kind == "pool":
-            water |= shapely.contains_xy(Polygon(f.outline), XX, YY)
-    water &= inside & ~sand
-    land = inside & ~sand & ~water
-
-    # land: rises away from the sand, falls to the water; moss texture on top
-    d_sand = distance_transform_edt(~sand) * dx
-    d_water = distance_transform_edt(~water) * dx if water.any() else np.full_like(h, 1e3)
-    z_land = np.minimum(S + np.minimum(0.35 * d_sand, 24.0), S - 4.0 + 0.55 * d_water)
-    z_land += 1.4 * _noise((ny, nx), 2.0 / dx, seed + 2) + 5.0 * _noise((ny, nx), 25.0 / dx, seed + 3)
-    z_land += 2.2 * np.abs(_noise((ny, nx), 3.0 / dx, seed + 12))       # cushions of moss
-    h[land] = base + z_land[land]
-    living = land & shapely.contains_xy(living_moss_zone(garden), XX, YY)
+    # the garden inside the tray: moss, hill, stream, rocks, bridge, stones (landscape.terrain)
+    t = terrain(garden, dx=dx, seed=seed)
+    k0, l0 = int(round(pad / dx)), int(round(pad / dx))
+    sl = (slice(l0, l0 + t.zone.shape[0]), slice(k0, k0 + t.zone.shape[1]))
+    zone = np.full((ny, nx), OUTSIDE, np.uint8)
+    zone[sl] = t.zone
+    ground = np.zeros((ny, nx))
+    ground[sl] = t.ground
+    level = np.full((ny, nx), np.nan)
+    level[sl] = t.water
+    land = np.isin(zone, (LIVING, PRESERVED, KERB))
+    water = (zone == WATER)
+    sand = (zone == SAND)
+    h[inside] = base + S + ground[inside]
     tex = 1 + 0.35 * _noise((ny, nx), 1.2 / dx, seed + 4)
-    alb[land & ~living] = np.array([0.12, 0.20, 0.055]) * tex[land & ~living][:, None]
-    alb[living] = np.array([0.06, 0.15, 0.03]) * tex[living][:, None]
-
-    # water surface
-    h[water] = base + S - 7.0
+    for code, colour in ((PRESERVED, (0.12, 0.20, 0.055)), (LIVING, (0.06, 0.15, 0.03)),
+                         (KERB, (0.22, 0.20, 0.18))):
+        m = zone == code
+        alb[m] = np.array(colour) * tex[m][:, None]
+    h[water] = base + S + level[water]
     alb[water] = (0.035, 0.06, 0.065)
 
     # sand from the simulation (tray frame -> this grid)
@@ -146,29 +144,10 @@ def build_scene(garden: Garden, sand_h: np.ndarray, dx: float, rim: float = 30.0
     h[sand] = base + sh[i[sand], j[sand]]
     grain = 1 + 0.07 * _noise((ny, nx), 0.35 / dx, seed + 5)
     alb[sand] = np.array([0.64, 0.61, 0.55]) * grain[sand][:, None]
-
-    # stones, stream rocks, bridge
-    def dome(mask, top, lo):
-        d = distance_transform_edt(mask) * dx
-        prof = (d / max(d.max(), 1e-9)) ** 0.5
-        return lo + (top - lo) * prof
-    for stone, poly in zip(garden.stones, stone_polygons(garden)):
-        m = shapely.contains_xy(poly, XX, YY)
-        h[m] = base + dome(m, stone.height, S - 4.0)[m] + 1.5 * _noise((ny, nx), 1.5 / dx, seed + 6)[m]
-        alb[m] = np.array([0.075, 0.075, 0.08]) * (1 + 0.2 * _noise((ny, nx), 0.8 / dx, seed + 7))[m][:, None]
-    for f in garden.features:
-        if f.kind == "rock":
-            m = shapely.contains_xy(Polygon(f.outline), XX, YY)
-            h[m] = np.maximum(h[m], base + dome(m, S + f.height, S - 8.0)[m])
-            alb[m] = np.array([0.20, 0.19, 0.17]) * (1 + 0.2 * _noise((ny, nx), 1 / dx, seed + 8))[m][:, None]
-        elif f.kind == "bridge":
-            poly = Polygon(f.outline)
-            m = shapely.contains_xy(poly, XX, YY)
-            c = np.array(poly.centroid.coords[0])
-            half = max(np.hypot(*(np.asarray(poly.exterior.coords) - c).T))
-            r = np.hypot(XX - c[0], YY - c[1]) / half
-            h[m] = base + S + f.height - 6.0 + 8.0 * np.sqrt(np.clip(1 - r[m] ** 2, 0, 1))
-            alb[m] = np.array([0.24, 0.15, 0.08]) * (1 + 0.15 * _noise((ny, nx), 0.6 / dx, seed + 9))[m][:, None]
+    rough = 1 + 0.2 * _noise((ny, nx), 0.8 / dx, seed + 7)
+    alb[zone == STONE] = np.array([0.075, 0.075, 0.08]) * rough[zone == STONE][:, None]
+    alb[zone == ROCK] = np.array([0.20, 0.19, 0.17]) * rough[zone == ROCK][:, None]
+    alb[zone == BRIDGE] = np.array([0.24, 0.15, 0.08]) * rough[zone == BRIDGE][:, None]
 
     glow = np.zeros((ny, nx))
     lights = []

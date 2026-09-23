@@ -11,7 +11,15 @@ from karesansui.config import poc_garden
 
 @pytest.fixture(scope="module")
 def garden():
-    return poc_garden()
+    """The proof-of-concept arm with its joints free over their full mechanical range: these tests
+    check the kinematics everywhere, not the narrow limits the garden sets (tested in test_planner)."""
+    import dataclasses
+    g = poc_garden()
+    from karesansui.config import ArticulatedCfg, ScaraCfg
+    free_s = dataclasses.replace(g.arm.scara, j1_limits=ScaraCfg.j1_limits, j2_limits=ScaraCfg.j2_limits)
+    free_a = dataclasses.replace(g.arm.articulated, j1_limits=ArticulatedCfg.j1_limits,
+                                 j2_limits=ArticulatedCfg.j2_limits, j3_limits=ArticulatedCfg.j3_limits)
+    return dataclasses.replace(g, arm=dataclasses.replace(g.arm, scara=free_s, articulated=free_a))
 
 
 def random_poses(arm_base, n, rmin, rmax, z, seed=0):

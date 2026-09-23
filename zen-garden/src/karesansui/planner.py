@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import shapely
 from scipy.spatial import cKDTree
-from shapely.geometry import LineString, Point
+from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import nearest_points
 
 from .config import Garden
@@ -505,19 +505,76 @@ class ArmMachine:
         msgs += self.obstacle_clearance()
         return n, bad, msgs
 
-    def obstacle_clearance(self) -> list[str]:
-        """Everything within the arm's reach must sit below the travel lift."""
-        g, out = self.garden, []
-        reach = self.arm.l1 + self.arm.l2 if self.name == "scara" else self.arm.lu + self.arm.lf
-        items = [(s.name, s.height - g.tray.bed_depth, np.asarray(s.outline)) for s in g.stones]
-        items += [(l.name, l.height, np.array([l.xy])) for l in g.lanterns]
-        items += [(f.name, f.height, np.asarray(f.outline)) for f in g.features if f.height > 0]
-        base = np.asarray(g.arm.base)
-        for name, height, pts in items:
-            near = np.hypot(*(pts - base).T).min() <= reach + 60.0
-            if near and height > self.z_travel - 5.0:
-                out.append(f"{name} ({height:.0f} mm) is within the arm's reach and taller than the "
-                           f"travel lift ({self.z_travel:.0f} mm) allows")
+    def obstacles(self) -> list[tuple[str, float, object]]:
+        """Everything that stands up in the garden: name, top above the sand, plan-view footprint."""
+        g = self.garden
+        items = [(s.name, s.height - g.tray.bed_depth, Polygon(s.outline)) for s in g.stones]
+        items += [(l.name, l.height, Point(l.xy).buffer(l.radius)) for l in g.lanterns]
+        items += [(f.name, f.height, Polygon(f.outline)) for f in g.features
+                  if f.height > 0 and f.kind in ("rock", "bridge", "tree")]
+        return items
+
+    def sweep(self, step_deg: float = 0.5):
+        """Plan-view segments the arm can occupy anywhere inside its joint-limit box (cached).
+
+        SCARA: every link1 (base-elbow) and link2 (elbow-tool) segment over a grid of q1, q2.
+        Articulated: its links always lie in the vertical plane of the base angle, so in plan the
+        whole arm is a ray from the base, as long as the farthest horizontal reach the shoulder
+        and elbow limits allow."""
+        if getattr(self, "_sweep", None) is None:
+            a = self.arm
+            q1 = np.arange(a.lim1[0], a.lim1[1] + 1e-9, math.radians(step_deg))
+            if self.name == "scara":
+                q2 = np.arange(a.lim2[0], a.lim2[1] + 1e-9, math.radians(step_deg))
+                Q1, Q2 = np.meshgrid(q1, q2)
+                q = np.column_stack([Q1.ravel(), Q2.ravel(), np.zeros(Q1.size), np.zeros(Q1.size)])
+                tool, elbow = a.fk(q)[:, :2], a.elbows(q)[:, :2]
+                base = np.broadcast_to(a.base, elbow.shape)
+                self._sweep = {"head": shapely.points(tool),
+                               "links": np.concatenate([
+                                   shapely.linestrings(np.stack([base, elbow], axis=1)),
+                                   shapely.linestrings(np.stack([elbow, tool], axis=1))]),
+                               "widths": np.concatenate([
+                                   np.full(len(elbow), self.garden.arm.scara.link1_width / 2),
+                                   np.full(len(elbow), self.garden.arm.scara.link2_width / 2)])}
+            else:
+                q2 = np.arange(a.lim2[0], a.lim2[1] + 1e-9, math.radians(1.0))
+                q3 = np.arange(a.lim3[0], a.lim3[1] + 1e-9, math.radians(1.0))
+                Q2, Q3 = np.meshgrid(q2, q3)
+                reach = float((a.lu * np.cos(Q2) + a.lf * np.cos(Q2 + Q3)).max())
+                ends = a.base + reach * np.column_stack([np.cos(q1 + a.zero), np.sin(q1 + a.zero)])
+                rays = shapely.linestrings(np.stack([np.broadcast_to(a.base, ends.shape), ends], axis=1))
+                self._sweep = {"head": rays, "links": rays, "widths": np.full(len(rays), 25.0)}
+        return self._sweep
+
+    def sweep_clearance(self, footprint) -> tuple[float, float]:
+        """Smallest plan-view gap (mm) from a footprint to where the head (its swing radius) and
+        the links (their widths) can be anywhere inside the joint limits. Joint limits are what
+        makes this a guarantee, so the build sets them as hard stops as well as soft limits."""
+        sw = self.sweep()
+        head = shapely.distance(footprint, sw["head"]).min() - swing_radius(self.garden.rake, self.garden.screed)
+        links = (shapely.distance(footprint, sw["links"]) - sw["widths"]).min()
+        return float(head), float(links)
+
+    def link_height(self) -> float:
+        """Lowest height the links pass at (SCARA); an articulated arm's forearm comes down to
+        the tool, so any obstacle taller than the travel lift is checked against its links."""
+        return self.garden.arm.scara.link_height if self.name == "scara" else self.z_travel
+
+    def obstacle_clearance(self, margin: float = 10.0) -> list[str]:
+        """Anything taller than the travel lift must stay clear of everywhere the head can go, and
+        anything taller than the links' underside clear of where the links go, by ``margin``."""
+        out = []
+        for name, height, fp in self.obstacles():
+            if height <= self.z_travel - 5.0:
+                continue
+            head, links = self.sweep_clearance(fp)
+            if head < margin:
+                out.append(f"{name} ({height:.0f} mm) is taller than the travel lift ({self.z_travel:.0f} mm) "
+                           f"and only {head:.0f} mm from where the head can go")
+            if height > self.link_height() - 5.0 and links < margin:
+                out.append(f"{name} ({height:.0f} mm) reaches the links ({self.link_height():.0f} mm) "
+                           f"and is only {links:.0f} mm from where they sweep")
         return out
 
 

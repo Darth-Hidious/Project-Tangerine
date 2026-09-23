@@ -9,6 +9,7 @@
 width = 700.0
 depth = 450.0
 wall_height = 60.0
+back_wall_height = 110.0  # the back and left walls hold the hill: 85 mm above the sand
 bed_depth = 25.0         # fine sand needs far less depth than gravel: grooves are ~2-4 mm
 
 [sand]
@@ -93,24 +94,36 @@ link1 = 230.0
 link2 = 230.0
 link_height = 175.0
 lift = 110.0
+j1_limits = [-103.0, -8.0]   # what every program uses plus 5 deg; set as firmware soft limits AND hard stops,
+j2_limits = [58.0, 150.0]    # so the arm cannot sweep the back-left corner where the tree stands
 
 [arm.articulated]
 shoulder_height = 150.0
 upper = 250.0
 fore = 250.0
 wrist_drop = 90.0
+j1_limits = [-40.0, 42.0]    # what every program uses plus about 5 deg (soft limits and hard stops)
+j2_limits = [24.0, 97.0]
+j3_limits = [-156.0, -70.0]
 
 [water]
-reservoir_l = 2.0
+reservoir_l = 3.0        # under the pool; 224 x 162 mm footprint, 85 mm deep
 usable_fraction = 0.5
 flow_lpm = 1.0
-lift_mm = 80.0
+lift_mm = 145.0          # half-empty reservoir surface (-85 mm) to the spring (+60 mm)
 tube_id_mm = 6.0
-tube_len_m = 0.7
+tube_len_m = 0.8
 
-[[lanterns]]              # 90 mm tall so a 100 mm travel lift clears everything the arm can reach
-name = "back-left lantern"
-xy = [205.0, 418.0]
+[[lanterns]]              # every lantern is below the 100 mm travel lift, so the arm passes over them
+name = "spring lantern"
+xy = [238.0, 408.0]
+radius = 22.0
+height = 80.0
+light_height = 48.0
+[[lanterns]]
+name = "back lantern"
+xy = [470.0, 424.0]
+radius = 22.0
 height = 90.0
 light_height = 55.0
 [[lanterns]]
@@ -134,28 +147,51 @@ rings = 1
 height = 30.0
 outline = [[334, 166], [341, 157], [355, 155], [367, 163], [366, 176], [352, 182], [338, 178]]
 
-[[features]]
+[[features]]              # springs from the hill under the tree, zig-zags down it over three cascades
 name = "stream"
 kind = "stream"
-width = 40.0
-height = -15.0
-outline = [                 # springs from the rock at the back, under the bonsai's canopy
-    [100, 440], [112, 372], [70, 305], [112, 240], [92, 172],
-    [126, 118], [118, 92],
+width = 44.0
+plunge = 26.0             # plunge pool radius below each cascade: falling water entrains air -> the babble
+outline = [
+    [150, 398], [163, 366], [172, 327], [106, 300], [58, 250], [160, 196], [96, 130], [112, 88],
 ]
+levels = [60, 46, 14, 12, -1, -2, -3, -14]   # water surface (mm above the sand): cascades of 12, 30, 11, 9 mm
 
 [[features]]
 name = "pool"
 kind = "pool"
-height = -25.0
+height = -14.0            # water surface; the basin sits in the base, over the reservoir
 outline = [
-    [194, 62], [196, 71], [192, 79], [182, 87],
-    [166, 93], [146, 98], [126, 101], [106, 102],
-    [89, 101], [75, 98], [63, 93], [53, 87],
-    [44, 79], [36, 71], [30, 62], [28, 53],
-    [32, 45], [42, 37], [58, 31], [78, 26],
-    [98, 23], [118, 22], [135, 23], [149, 26],
-    [161, 31], [171, 37], [180, 45], [188, 53],
+    [210, 58], [206.9, 69.9], [197.7, 81], [183.1, 90.5], [164, 97.8], [141.8, 102.4],
+    [118, 104], [94.2, 102.4], [72, 97.8], [52.9, 90.5], [38.3, 81], [29.1, 69.9],
+    [26, 58], [29.1, 46.1], [38.3, 35], [52.9, 25.5], [72, 18.2], [94.2, 13.6],
+    [118, 12], [141.8, 13.6], [164, 18.2], [183.1, 25.5], [197.7, 35], [206.9, 46.1],
+]
+
+[[features]]
+name = "hill"
+kind = "hill"
+height = 72.0
+outline = [
+    [0, 250], [60, 262], [140, 300], [215, 352], [236, 450], [0, 450],
+]
+
+[[features]]              # the tree's pot, sunk into the hill under the moss
+name = "bonsai pot"
+kind = "pot"
+outline = [
+    [22, 364], [118, 364], [118, 428], [22, 428],
+]
+
+[[features]]              # living tree, out of the arm's joint-limited reach: see the planner's obstacle check
+name = "bonsai"
+kind = "tree"
+height = 300.0            # top of the foliage above the sand surface
+outline = [
+    [194, 380], [190, 402.3], [178.5, 423], [160, 440.8], [136, 454.5], [108, 463.1],
+    [78, 466], [48, 463.1], [20, 454.5], [-4, 440.8], [-22.5, 423], [-34, 402.3],
+    [-38, 380], [-34, 357.7], [-22.5, 337], [-4, 319.2], [20, 305.5], [48, 296.9],
+    [78, 294], [108, 296.9], [136, 305.5], [160, 319.2], [178.5, 337], [190, 357.7],
 ]
 
 [[features]]
@@ -163,40 +199,39 @@ name = "bridge"
 kind = "bridge"
 height = 30.0
 outline = [
-    [70, 226], [150, 256], [142, 276], [62, 246],
+    [140.7, 259.0], [121.5, 269.6], [77.3, 189.0], [96.5, 178.4],
 ]
 
 [[features]]
-name = "stream rock 1"
+name = "spring rock"
 kind = "rock"
-height = 25.0
+height = 90.0
 outline = [
-    [40, 300], [58, 292], [70, 305], [62, 320], [44, 318],
+    [136, 416], [150, 406], [168, 410], [172, 426], [150, 432],
 ]
 
 [[features]]
-name = "stream rock 2"
+name = "cascade rock 1"
 kind = "rock"
-height = 25.0
+height = 48.0
 outline = [
-    [150, 128], [170, 120], [182, 134], [171, 148], [152, 143],
+    [196, 352], [210, 344], [222, 354], [216, 368], [200, 366],
 ]
 
 [[features]]
-name = "stream rock 3"
+name = "cascade rock 2"
 kind = "rock"
-height = 25.0
+height = 30.0
 outline = [
-    [84, 420], [100, 410], [118, 418], [112, 436], [90, 437],
+    [8, 256], [22, 246], [36, 254], [32, 270], [14, 272],
 ]
 
-[[features]]              # living tree, out of the arm's reach: see the obstacle check in the planner
-name = "bonsai"
-kind = "tree"
-height = 190.0            # top of the foliage above the sand surface
-outline = [               # canopy footprint (the pot sits under its left half, on the moss)
-    [102, 398], [97, 423], [83, 441], [62, 448], [40, 446], [20, 435],
-    [6, 416], [4, 392], [14, 370], [34, 355], [58, 350], [80, 357], [96, 374],
+[[features]]
+name = "cascade rock 3"
+kind = "rock"
+height = 18.0
+outline = [
+    [138, 98], [152, 90], [166, 98], [160, 112], [144, 112],
 ]
 
 [[features]]

@@ -17,7 +17,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from shapely.geometry import LineString, Polygon, box
+from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import unary_union
 
 from .config import Garden
@@ -47,14 +47,44 @@ def evaporation_l_per_day(area_m2: float, t_water: float = 20.0, t_air: float = 
     return w * 86400.0 / RHO * 1000.0
 
 
+CASCADE = 5.0        # a level drop of at least this much at a stream vertex is a cascade (mm)
+LIP_RUN = 2.0        # a reach ending in a cascade falls this much before its lip (mm)
+
+
+def cascades(stream) -> list[int]:
+    """Indices of the stream vertices where the water falls as a cascade."""
+    lv = stream.levels
+    return [i for i in range(1, len(lv)) if lv[i - 1] - lv[i] >= CASCADE]
+
+
 def water_zones(garden: Garden):
     shapes = []
     for f in garden.features:
         if f.kind == "stream":
             shapes.append(LineString(f.outline).buffer(f.width / 2))
+            if f.levels and f.plunge > 0:
+                shapes += [Point(f.outline[i]).buffer(f.plunge) for i in cascades(f)]
         elif f.kind == "pool":
             shapes.append(Polygon(f.outline))
     return unary_union(shapes) if shapes else Polygon()
+
+
+def stream_profile(stream) -> tuple[list[dict], list[dict]]:
+    """Reaches and cascades of a stream with ``levels``.
+
+    A reach runs between two centre-line vertices. If the downstream vertex is a cascade, the
+    reach falls LIP_RUN to its lip and the water then drops freely to the next level; otherwise
+    the reach slopes straight to the next level."""
+    pts, lv = stream.outline, stream.levels
+    falls = set(cascades(stream))
+    reaches, drops = [], []
+    for i in range(len(pts) - 1):
+        length = LineString(pts[i:i + 2]).length
+        end = lv[i] - LIP_RUN if i + 1 in falls else lv[i + 1]
+        reaches.append({"from": i, "length_mm": length, "fall_mm": lv[i] - end})
+        if i + 1 in falls:
+            drops.append({"at": i + 1, "xy": pts[i + 1], "height_mm": end - lv[i + 1]})
+    return reaches, drops
 
 
 def living_moss_zone(garden: Garden, band: float = MOSS_BAND, dry_gap: float = DRY_GAP):
@@ -126,12 +156,12 @@ class WaterReport:
     autonomy_days: tuple[float, float]
     system_head_m: float
     hydraulic_power_w: float
-    film_mm: float
-    film_speed_ms: float
-    froude: float
+    stream_length_m: float
+    reaches: list                                  # per reach: length, fall, smooth-bed film depth, speed, Froude
+    cascades: list                                 # per cascade: free-fall height, speed at the plunge pool
 
 
-def report(garden: Garden, drop_mm: float = 50.0) -> WaterReport:
+def report(garden: Garden) -> WaterReport:
     w = garden.water
     area = open_water_m2(garden)
     moss = living_moss_zone(garden).area / 1e6
@@ -140,7 +170,18 @@ def report(garden: Garden, drop_mm: float = 50.0) -> WaterReport:
     usable = w.reservoir_l * w.usable_fraction
     head = system_head_m(w.flow_lpm, w.lift_mm / 1000.0, w.tube_id_mm / 1000.0, w.tube_len_m)
     power = RHO * G * (w.flow_lpm / 60000.0) * head
-    length = stream_length_m(garden)
-    width = next((f.width for f in garden.features if f.kind == "stream"), 40.0) / 1000.0
-    h, v, fr = film_depth_mm(w.flow_lpm, width, drop_mm / 1000.0 / max(length, 1e-9))
-    return WaterReport(area, moss, (e_water, e_both), (usable / e_both, usable / e_water), head, power, h, v, fr)
+    stream = next(f for f in garden.features if f.kind == "stream")
+    reaches, drops = stream_profile(stream)
+    width = stream.width / 1000.0
+    speed_at = {}
+    for r in reaches:
+        slope = max(r["fall_mm"], 1e-3) / r["length_mm"]
+        h, v, fr = film_depth_mm(w.flow_lpm, width, slope)
+        r.update({"slope": round(slope, 4), "film_mm": round(h, 2), "speed_ms": round(v, 3), "froude": round(fr, 2)})
+        speed_at[r["from"] + 1] = v
+    for d in drops:
+        fall = math.sqrt(2 * G * d["height_mm"] / 1000.0)
+        d.update({"freefall_ms": round(fall, 3),
+                  "impact_ms": round(math.hypot(fall, speed_at.get(d["at"], 0.0)), 3)})
+    return WaterReport(area, moss, (e_water, e_both), (usable / e_both, usable / e_water), head, power,
+                       stream_length_m(garden), reaches, drops)

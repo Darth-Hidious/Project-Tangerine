@@ -17,7 +17,7 @@ from shapely.geometry import LineString, Point, Polygon
 
 from .geometry import sand_region, stone_polygons, tine_paths
 from .planner import Pass, Program, Travel, coverage
-from .water import living_moss_zone
+from .water import living_moss_zone, water_zones
 
 SURFACE, INK, INK2, MUTED, HAIR, AXIS = "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
 BLUE, ORANGE, AQUA, RED = "#2a78d6", "#eb6834", "#1baf7a", "#d03b3b"
@@ -54,13 +54,7 @@ def layout_zones(garden) -> dict:
     from shapely.ops import unary_union
     tray = box(0, 0, garden.tray.width, garden.tray.depth)
     sand = sand_region(garden)
-    water = []
-    for f in garden.features:
-        if f.kind == "stream":
-            water.append(LineString(f.outline).buffer(f.width / 2, cap_style="round"))
-        elif f.kind == "pool":
-            water.append(Polygon(f.outline))
-    water = unary_union(water) if water else Polygon()
+    water = water_zones(garden)
     land = tray.difference(sand).difference(water)
     living = living_moss_zone(garden).intersection(land)
     preserved = land.difference(living)
@@ -81,7 +75,10 @@ def draw_tray(ax, garden, stones: bool = True, layout: bool = True) -> None:
             elif f.kind == "bridge":
                 _poly(ax, Polygon(f.outline), color=WOOD, lw=0, zorder=1)
             elif f.kind == "tree":
-                _poly(ax, Polygon(f.outline), color=TREE, lw=0, alpha=0.9, zorder=6)
+                _poly(ax, Polygon(f.outline), color=TREE, lw=0, alpha=0.8, zorder=6)
+            elif f.kind in ("hill", "pot"):                      # outlines only: the hill, the sunk pot
+                xy = np.asarray(f.outline + (f.outline[0],))
+                ax.plot(xy[:, 0], xy[:, 1], color=INK2, lw=0.8, ls=(0, (3, 2)), zorder=6.5)
         for lan in garden.lanterns:
             ax.add_patch(matplotlib.patches.Circle(lan.xy, lan.radius, color="#6f6e69", lw=0, zorder=6))
             ax.add_patch(matplotlib.patches.Circle(lan.xy, lan.radius * 0.45, color="#f3c77a", lw=0, zorder=7))

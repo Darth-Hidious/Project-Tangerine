@@ -23,6 +23,7 @@ class Tray:
     width: float = 1200.0        # inner x extent
     depth: float = 800.0         # inner y extent
     wall_height: float = 100.0   # above the base plate
+    back_wall_height: float = 0.0   # back and left walls, if taller (a backdrop that holds a hill); 0 = same
     bed_depth: float = 35.0      # nominal gravel surface above the base plate
 
 
@@ -157,12 +158,24 @@ class PlannerCfg:
 
 @dataclass(frozen=True)
 class Feature:
-    """A non-sand element of the layout. Drawn, and an obstacle for the arm if it is tall."""
+    """A non-sand element of the layout. Drawn, and an obstacle for the arm if it is tall.
+
+    kind: stream | pool | rock | bridge | tree | hill | pot | bay | reservoir
+      stream  outline is the centre line; ``levels`` gives the water surface at each vertex (mm
+              above the sand). Where it falls by 5 mm or more the water drops as a cascade into a
+              plunge pool of radius ``plunge``.
+      pool    ``height`` is its water surface.
+      tree    outline is the canopy footprint, ``height`` the top of the foliage.
+      hill    the ground rises to ``height`` inside the outline (smoothly, from its edge inwards).
+      pot     a pot sunk into the ground (hidden); not an obstacle.
+    """
     name: str
-    kind: str                                   # stream | pool | rock | bridge | bay | reservoir
+    kind: str
     outline: tuple[tuple[float, float], ...]    # polygon, or the centre line of a stream
     height: float = 0.0                         # top above the sand surface
     width: float = 0.0                          # stream width (centre-line features only)
+    levels: tuple[float, ...] = ()              # stream water surface per centre-line vertex
+    plunge: float = 0.0                         # radius of the plunge pool below each cascade
 
 
 @dataclass(frozen=True)
@@ -182,6 +195,8 @@ class ScaraCfg:
     link1: float = 230.0
     link2: float = 230.0
     link_height: float = 175.0    # underside of the links above the sand surface
+    link1_width: float = 52.0     # plan-view widths of the links, for the sweep check and the renders
+    link2_width: float = 42.0
     lift: float = 110.0           # vertical stroke of the tool carriage
     j1_limits: tuple[float, float] = (-170.0, 170.0)
     j2_limits: tuple[float, float] = (-150.0, 150.0)
@@ -279,7 +294,8 @@ def load_garden(path: str | Path) -> Garden:
         arm = Arm(scara=scara, articulated=artic, **_tuples(arm_doc))
     features = tuple(
         Feature(name=f["name"], kind=f["kind"], outline=tuple((float(x), float(y)) for x, y in f["outline"]),
-                height=float(f.get("height", 0.0)), width=float(f.get("width", 0.0)))
+                height=float(f.get("height", 0.0)), width=float(f.get("width", 0.0)),
+                levels=tuple(float(v) for v in f.get("levels", ())), plunge=float(f.get("plunge", 0.0)))
         for f in doc.get("features", [])
     )
     return Garden(

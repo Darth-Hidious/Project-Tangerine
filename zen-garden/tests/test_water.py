@@ -65,3 +65,25 @@ def test_living_moss_keeps_its_distance_from_the_sand():
     assert zone.distance(sand_region(g)) >= water.DRY_GAP - 0.05     # buffer arcs are drawn as chords
     assert zone.intersection(water.water_zones(g)).area < 1e-6
     assert box(0, 0, g.tray.width, g.tray.depth).contains(zone)
+
+
+def test_stream_profile_accounts_for_every_millimetre_of_fall():
+    """Reach falls plus cascade drops add up to the stream's total drop, and every level fall of
+    5 mm or more is a cascade into a plunge pool that is part of the open water."""
+    g = poc_garden()
+    stream = next(f for f in g.features if f.kind == "stream")
+    reaches, drops = water.stream_profile(stream)
+    total = stream.levels[0] - stream.levels[-1]
+    assert sum(r["fall_mm"] for r in reaches) + sum(d["height_mm"] for d in drops) == pytest.approx(total)
+    assert [d["at"] for d in drops] == water.cascades(stream)
+    assert len(drops) >= 3 and all(d["height_mm"] >= water.CASCADE - water.LIP_RUN for d in drops)
+    zones = water.water_zones(g)
+    from shapely.geometry import Point
+    for d in drops:
+        assert zones.contains(Point(d["xy"]).buffer(stream.plunge - 0.5))
+
+
+def test_water_keeps_its_distance_from_the_sand():
+    from karesansui.geometry import sand_region
+    g = poc_garden()
+    assert water.water_zones(g).distance(sand_region(g)) >= 40.0
