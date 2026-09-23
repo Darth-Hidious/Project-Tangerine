@@ -25,7 +25,8 @@ from shapely.ops import nearest_points
 
 from .config import Garden
 from .geometry import (allowed_region, cumulative_length, curvature, free_space, poses_from_path,
-                       poses_valid, resample, split_runs, stone_polygons, tine_paths, tray_box)
+                       poses_valid, resample, sand_region, split_runs, stone_polygons, swing_radius,
+                       tine_paths)
 from .patterns import (PATTERNS, PatternError, Stroke, head_lateral_half, islands, ring_base_offset,
                        ring_centreline)
 
@@ -42,7 +43,9 @@ class Pass:
 
 @dataclass
 class Travel:
-    poses: np.ndarray       # (N, 3) waypoints; straight segments between them
+    poses: np.ndarray                   # (N, 3) waypoints; straight segments between them
+    z: np.ndarray | None = None         # tool height above the sand per waypoint (arm machines)
+    joints: np.ndarray | None = None    # joint values per waypoint (arm machines)
 
 
 @dataclass
@@ -75,6 +78,7 @@ class Program:
     pattern: str
     steps: list            # Travel and Pass objects in execution order
     report: Report
+    machine: object = None
 
     @property
     def passes(self) -> list[Pass]:
@@ -86,13 +90,14 @@ class PlanningError(RuntimeError):
 
 
 # --------------------------------------------------------------------------- trimming
-def trim(poses: np.ndarray, garden: Garden, region) -> list[np.ndarray]:
+def trim(poses: np.ndarray, machine, kind: str) -> list[np.ndarray]:
     """Split a pose sequence into the longest runs the head can follow without touching anything.
 
     Headings come from the full path, so a trimmed piece keeps exactly the poses that were checked."""
+    garden = machine.garden
     if len(poses) < 2:
         return []
-    ok = poses_valid(poses, garden, region)
+    ok = machine.valid(poses, kind)
     pieces = []
     for a, b in split_runs(ok):
         piece = poses[a:b]
@@ -108,12 +113,13 @@ def _close_loop(xy: np.ndarray, overlap: float, step: float) -> np.ndarray:
     return resample(np.vstack([xy, extra]), step)
 
 
-def _passes_from(xy: np.ndarray, closed: bool, kind: str, label: str, garden: Garden, region) -> list[Pass]:
+def _passes_from(xy: np.ndarray, closed: bool, kind: str, label: str, machine) -> list[Pass]:
+    garden = machine.garden
     poses = poses_from_path(xy)
-    pieces = trim(poses, garden, region)
+    pieces = trim(poses, machine, kind)
     if closed and len(pieces) == 1 and len(pieces[0]) == len(poses):
         looped = poses_from_path(_close_loop(xy, garden.planner.closed_overlap, garden.planner.sample_step))
-        if poses_valid(looped, garden, region).all():
+        if machine.valid(looped, kind).all():
             pieces = [looped]
     return [Pass(kind, p, label) for p in pieces]
 
@@ -122,63 +128,66 @@ def _kept(passes: list[Pass]) -> float:
     return float(sum(cumulative_length(p.poses[:, :2])[-1] for p in passes))
 
 
-def _best_open_arc(xy: np.ndarray, label: str, garden: Garden, region) -> list[Pass]:
+def _best_open_arc(xy: np.ndarray, label: str, machine) -> list[Pass]:
     """Rake an open arc in whichever way reaches the most of it.
 
     The skid leads by ``reach_ahead``, so an arc that runs into a wall stops early at that
     end while the other end (where the head backs away from a wall) can start close to it.
     Candidates: forwards, backwards, or split in the middle and raked from both ends inwards,
     the second half running on past the joint far enough to re-cut what its skid flattened."""
-    fwd = _passes_from(xy, False, "rake", label, garden, region)
-    rev = _passes_from(xy[::-1].copy(), False, "rake", label, garden, region)
+    garden = machine.garden
+    fwd = _passes_from(xy, False, "rake", label, machine)
+    rev = _passes_from(xy[::-1].copy(), False, "rake", label, machine)
     best = max((fwd, rev), key=_kept)
     s = cumulative_length(xy)
     if s[-1] > 4 * garden.planner.min_stroke:
         mid = int(np.searchsorted(s, s[-1] / 2))
         over = int(np.searchsorted(s, s[mid] - garden.rake.reach_ahead - 10.0))
-        split = (_passes_from(xy[: mid + 1], False, "rake", label, garden, region)
-                 + _passes_from(xy[over:][::-1].copy(), False, "rake", label, garden, region))
+        split = (_passes_from(xy[: mid + 1], False, "rake", label, machine)
+                 + _passes_from(xy[over:][::-1].copy(), False, "rake", label, machine))
         # A joint costs a lift mark; only take it for a real gain in raked length.
         if _kept(split) - (s[mid] - s[over]) > _kept(best) + 20.0:
             best = split
     return best
 
 
-def rake_passes(garden: Garden, strokes: list[Stroke], region) -> tuple[list[Pass], float]:
+def rake_passes(machine, strokes: list[Stroke]) -> tuple[list[Pass], float]:
     passes, dropped = [], 0.0
     for st in strokes:
         label = f"{st.kind}:{st.island}" if st.island else st.kind
         if st.kind in ("ring", "spiral", "frame") and not st.closed:
-            new = _best_open_arc(st.xy, label, garden, region)
+            new = _best_open_arc(st.xy, label, machine)
         else:
-            new = _passes_from(st.xy, st.closed, "rake", label, garden, region)
+            new = _passes_from(st.xy, st.closed, "rake", label, machine)
         dropped += max(cumulative_length(st.xy)[-1] - _kept(new), 0.0)
         passes += new
     return passes, dropped
 
 
-def screed_passes(garden: Garden, region) -> list[Pass]:
+def screed_passes(machine) -> list[Pass]:
     """Erase: lanes east to west over the whole bed, then rings around every island."""
+    garden = machine.garden
     wc, step = garden.planner.wall_clearance, garden.planner.sample_step
     lat = head_lateral_half(garden)
     spacing = garden.screed.width - garden.screed.overlap
-    lo, hi = wc + lat + SLACK, garden.tray.depth - wc - lat - SLACK
+    bx0, by0, bx1, by1 = sand_region(garden).bounds
+    lo, hi = by0 + wc + lat + SLACK, by1 - wc - lat - SLACK
     ys = list(np.arange(lo, hi + 1e-9, spacing))
     if hi - ys[-1] > 1e-6:
         ys.append(hi)
     back = max(garden.rake.bar_thickness, garden.screed.thickness) / 2
-    x_start = garden.tray.width - wc - back - SLACK   # heading west: only the back of the head faces east
-    x_end = wc + garden.rake.reach_ahead + SLACK      # the skid leads towards the west wall
+    x_start = bx1 - wc - back - SLACK   # heading west: only the back of the head faces east
+    x_end = bx0 + wc + garden.rake.reach_ahead + SLACK   # the skid leads towards the west wall
     passes = []
     for y in ys:
         xy = resample(np.array([[x_start, y], [x_end, y]]), step)
-        passes += _passes_from(xy, False, "screed", "screed:lane", garden, region)
+        passes += _passes_from(xy, False, "screed", "screed:lane", machine)
     for island in islands(garden):
         reach = (island.offsets[-1] if island.offsets else 0.0) + garden.rake.tine_half
         d = ring_base_offset(garden)
         while d - garden.screed.width / 2 < reach + spacing / 2:
             xy = ring_centreline(island, d, step)
-            passes += _passes_from(xy, True, "screed", f"screed:ring:{island.name}", garden, region)
+            passes += _passes_from(xy, True, "screed", f"screed:ring:{island.name}", machine)
             d += spacing
     return passes
 
@@ -312,6 +321,134 @@ def densify(poses: np.ndarray, step: float) -> np.ndarray:
     return np.vstack(out)
 
 
+# --------------------------------------------------------------------------- machines
+class GantryMachine:
+    """A gantry over the tray: the head clears the grit when travelling but not the walls or
+    stones, so travel is routed around them and the head only turns in free space."""
+
+    name = "gantry"
+
+    def __init__(self, garden: Garden):
+        self.garden = garden
+        self.region = allowed_region(garden)
+        self.free = free_space(garden)
+        if self.free.is_empty:
+            raise PlanningError("no free space for the head to turn in")
+        self.router = Router(self.free)
+
+    def valid(self, poses: np.ndarray, kind: str) -> np.ndarray:
+        return poses_valid(poses, self.garden, self.region)
+
+    def park(self) -> np.ndarray:
+        xy = np.asarray(nearest_points(self.free.buffer(-0.5), Point(0.0, self.garden.tray.depth / 2))[0].coords[0])
+        return np.array([*xy, 0.0])
+
+    def travel(self, p0, p1, kind0, kind1) -> Travel:
+        return travel_between(p0, p1, self.garden, self.region, self.router)
+
+    def check(self, steps) -> tuple[int, int, list[str]]:
+        step = self.garden.planner.sample_step
+        everything = np.vstack([s.poses if isinstance(s, Pass) else densify(s.poses, step) for s in steps])
+        ok = poses_valid(everything, self.garden, self.region)
+        bad = int((~ok).sum())
+        return len(ok), bad, ([f"{bad} head poses collide with a wall or stone"] if bad else [])
+
+
+class ArmMachine:
+    """An arm beside the sand. The head is lifted clear of every obstacle it can reach when
+    travelling, so travel is lift, a joint-space move, lower. Rake and screed poses must be
+    reachable by the arm as well as clear of the sand's edge and the stones."""
+
+    def __init__(self, garden: Garden, kind: str | None = None):
+        from .arm import make_arm
+        self.garden = garden
+        self.name = kind or garden.arm.kind
+        self.region = allowed_region(garden)
+        shapely.prepare(self.region)
+        self.arm = make_arm(garden, self.name)
+        self.z_travel = garden.arm.travel_lift
+
+    def z_for(self, kind: str) -> float:
+        """Tool point (the head's carriage reference, as for the gantry: the blade edge) above the sand."""
+        return {"rake": self.garden.gantry.rake_clearance, "screed": 0.0}.get(kind, self.z_travel)
+
+    def ik(self, poses: np.ndarray, z, q_prev=None):
+        z = np.broadcast_to(np.asarray(z, float), (len(poses),))
+        return self.arm.ik(np.column_stack([poses[:, :2], z, poses[:, 2]]), q_prev)
+
+    def valid(self, poses: np.ndarray, kind: str) -> np.ndarray:
+        return poses_valid(poses, self.garden, self.region) & self.ik(poses, self.z_for(kind))[1]
+
+    def park(self) -> np.ndarray:
+        """Head lifted over the sand edge nearest the base, arm folded towards its base."""
+        a = self.arm
+        r = 0.5 * (swing_radius(self.garden.rake, self.garden.screed) + 0.0) + self._r_min() + 30.0
+        xy = a.base + r * np.array([math.cos(a.zero), math.sin(a.zero)])
+        return np.array([*xy, a.zero])
+
+    def _r_min(self) -> float:
+        a = self.arm
+        if self.name == "scara":
+            return math.sqrt(a.l1**2 + a.l2**2 + 2 * a.l1 * a.l2 * math.cos(a.lim2[1]))
+        return 150.0
+
+    def travel(self, p0, p1, kind0, kind1) -> Travel:
+        z0, z1, zt = self.z_for(kind0), self.z_for(kind1), self.z_travel
+        qa, oka = self.ik(np.array([p0]), zt)
+        qb, okb = self.ik(np.array([p1]), zt, q_prev=qa[0])
+        if not (oka[0] and okb[0]):
+            raise PlanningError("travel end point out of the arm's reach")
+        span = np.abs(qb[0] - qa[0])
+        span[2 if self.name == "scara" else 1] /= 1.0
+        n = max(int(np.ceil(np.degrees(span.max()) / 1.0)), 1)      # one degree per waypoint
+        qs = qa[0] + np.linspace(0, 1, n + 1)[:, None] * (qb[0] - qa[0])
+        mid = self.arm.fk(qs)
+        xy = np.vstack([p0[:2], mid[:, :2], p1[:2]])
+        th = np.concatenate([[p0[2]], mid[:, 3], [p1[2]]])
+        z = np.concatenate([[z0], np.full(len(mid), zt), [z1]])
+        q0, _ = self.ik(np.array([p0]), z0, q_prev=qa[0])
+        q1, _ = self.ik(np.array([p1]), z1, q_prev=qb[0])
+        joints = np.vstack([q0, qs, q1])
+        return Travel(np.column_stack([xy, th]), z, joints)
+
+    def check(self, steps) -> tuple[int, int, list[str]]:
+        n, bad, msgs = 0, 0, []
+        for s in steps:
+            if isinstance(s, Pass):
+                ok = self.valid(s.poses, s.kind)
+                n += len(ok)
+                bad += int((~ok).sum())
+            else:
+                ok = self.ik(s.poses, s.z)[1]
+                n += len(ok)
+                bad += int((~ok).sum())
+        if bad:
+            msgs.append(f"{bad} poses collide with the sand edge or a stone, or are out of the arm's reach")
+        msgs += self.obstacle_clearance()
+        return n, bad, msgs
+
+    def obstacle_clearance(self) -> list[str]:
+        """Everything within the arm's reach must sit below the travel lift."""
+        g, out = self.garden, []
+        reach = self.arm.l1 + self.arm.l2 if self.name == "scara" else self.arm.lu + self.arm.lf
+        items = [(s.name, s.height - g.tray.bed_depth, np.asarray(s.outline)) for s in g.stones]
+        items += [(l.name, l.height, np.array([l.xy])) for l in g.lanterns]
+        items += [(f.name, f.height, np.asarray(f.outline)) for f in g.features if f.height > 0]
+        base = np.asarray(g.arm.base)
+        for name, height, pts in items:
+            near = np.hypot(*(pts - base).T).min() <= reach + 60.0
+            if near and height > self.z_travel - 5.0:
+                out.append(f"{name} ({height:.0f} mm) is within the arm's reach and taller than the "
+                           f"travel lift ({self.z_travel:.0f} mm) allows")
+        return out
+
+
+def make_machine(garden: Garden, kind: str | None = None):
+    if garden.arm is None:
+        return GantryMachine(garden)
+    return ArmMachine(garden, kind)
+
+
 # --------------------------------------------------------------------------- checks
 def _curvature_checks(passes: list[Pass], garden: Garden, report: Report) -> None:
     rake = garden.rake
@@ -351,12 +488,12 @@ def groove_samples(passes: list[Pass], garden: Garden, trim_ends: float = 0.0):
 
 
 def coverage(passes: list[Pass], garden: Garden, cell: float = 2.0) -> tuple[float, np.ndarray]:
-    """Share of the open grit (tray minus stone footprints) within half a pitch of a groove."""
+    """Share of the open grit (sand area minus stone footprints) within half a pitch of a groove."""
     pts, _, _ = groove_samples(passes, garden)
     W, D = garden.tray.width, garden.tray.depth
     xs, ys = np.arange(cell / 2, W, cell), np.arange(cell / 2, D, cell)
     X, Y = np.meshgrid(xs, ys)
-    grit = np.ones(X.shape, bool)
+    grit = shapely.contains_xy(sand_region(garden), X, Y)
     for poly in stone_polygons(garden):
         grit &= ~shapely.contains_xy(poly, X, Y)
     if len(pts) == 0:
@@ -390,45 +527,38 @@ def groove_spacing(passes: list[Pass], garden: Garden) -> dict:
 
 
 # --------------------------------------------------------------------------- program
-def build_program(garden: Garden, pattern: str = "lines", erase: bool = True, **params) -> Program:
+def build_program(garden: Garden, pattern: str = "lines", erase: bool = True, machine=None, **params) -> Program:
     if pattern not in PATTERNS:
         raise PatternError(f"unknown pattern {pattern!r}; choose from {sorted(PATTERNS)}")
-    region = allowed_region(garden)
-    free = free_space(garden)
-    if free.is_empty:
-        raise PlanningError("no free space for the head to turn in")
-    router = Router(free)
+    machine = machine or make_machine(garden)
     report = Report(pattern)
 
     strokes = PATTERNS[pattern](garden, **params)
-    rakes, report.dropped_mm = rake_passes(garden, strokes, region)
-    screeds = screed_passes(garden, region) if erase else []
+    rakes, report.dropped_mm = rake_passes(machine, strokes)
+    screeds = screed_passes(machine) if erase else []
     passes = screeds + rakes
     if not rakes:
         report.errors.append("pattern produced no rakeable strokes")
 
-    park_xy = np.asarray(nearest_points(free.buffer(-0.5), Point(0.0, garden.tray.depth / 2))[0].coords[0])
+    park = machine.park()
     steps: list = []
-    current = np.array([*park_xy, 0.0])
+    current, kind = park.copy(), "park"
     for p in passes:
         # Shift the whole pass by whole turns so the head rotates the short way.
         shift = 2 * math.pi * round((current[2] - p.poses[0, 2]) / (2 * math.pi))
         p.poses[:, 2] += shift
-        steps.append(travel_between(current, p.poses[0], garden, region, router))
+        steps.append(machine.travel(current, p.poses[0], kind, p.kind))
         steps.append(p)
-        current = p.poses[-1].copy()
-    park_end = np.array([*park_xy, current[2]])
-    steps.append(travel_between(current, park_end, garden, region, router))
+        current, kind = p.poses[-1].copy(), p.kind
+    park_end = np.array([*park[:2], current[2]])
+    steps.append(machine.travel(current, park_end, kind, "park"))
 
     # ---- checks
     _curvature_checks(passes, garden, report)
+    report.poses_checked, report.collisions, msgs = machine.check(steps)
+    report.errors += msgs
     step = garden.planner.sample_step
     everything = np.vstack([s.poses if isinstance(s, Pass) else densify(s.poses, step) for s in steps])
-    ok = poses_valid(everything, garden, region)
-    report.poses_checked = int(len(ok))
-    report.collisions = int((~ok).sum())
-    if report.collisions:
-        report.errors.append(f"{report.collisions} head poses collide with a wall or stone")
     report.n_rake = sum(p.kind == "rake" for p in passes)
     report.n_screed = sum(p.kind == "screed" for p in passes)
     report.rake_mm = float(sum(cumulative_length(p.poses[:, :2])[-1] for p in passes if p.kind == "rake"))
@@ -445,4 +575,4 @@ def build_program(garden: Garden, pattern: str = "lines", erase: bool = True, **
         report.warnings.append(f"{report.dropped_mm:.0f} mm of proposed raking was unreachable and dropped")
     if garden.gantry.a_limit is not None and report.rotation_deg > garden.gantry.a_limit:
         report.errors.append("head rotation exceeds the configured cable limit")
-    return Program(garden, pattern, steps, report)
+    return Program(garden, pattern, steps, report, machine)

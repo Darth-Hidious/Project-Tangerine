@@ -28,7 +28,7 @@ from shapely.geometry.polygon import orient
 from shapely.ops import polylabel, unary_union
 
 from .config import Garden
-from .geometry import headings, left_normals, resample, split_runs, stone_polygons, tray_box
+from .geometry import headings, left_normals, resample, sand_region, split_runs, stone_polygons
 
 QUAD_SEGS = 64
 SLACK = 0.5   # mm kept between a planned path and the limit it was derived from (polygonisation noise)
@@ -98,7 +98,8 @@ def lane_margins(garden: Garden) -> tuple[float, float]:
     wc = garden.planner.wall_clearance
     back = max(garden.rake.bar_thickness, garden.screed.thickness) / 2
     m = wc + max(back, garden.rake.reach_ahead) + SLACK
-    return m, garden.tray.width - m
+    x0, _, x1, _ = sand_region(garden).bounds
+    return x0 + m, x1 - m
 
 
 def lane_centres(garden: Garden, inset: float = 0.0) -> list[float]:
@@ -107,8 +108,9 @@ def lane_centres(garden: Garden, inset: float = 0.0) -> list[float]:
     ``inset`` shrinks the usable band on both sides (used by waves, whose crests reach
     ``amplitude`` further out than the lane centre)."""
     wc, lat, sp = garden.planner.wall_clearance, head_lateral_half(garden), garden.rake.lane_spacing
-    lo = wc + lat + inset + SLACK
-    hi = garden.tray.depth - wc - lat - inset - SLACK
+    _, y0_, _, y1_ = sand_region(garden).bounds
+    lo = y0_ + wc + lat + inset + SLACK
+    hi = y1_ - wc - lat - inset - SLACK
     if hi < lo:
         raise PatternError("tray too narrow for a single lane")
     n = int(math.floor((hi - lo) / sp + 1e-9)) + 1
@@ -157,7 +159,7 @@ def _voronoi_keep(xy: np.ndarray, own: Island, others: list[Island], half: float
 def island_rings(garden: Garden, isl: list[Island], fill: bool = False) -> list[Stroke]:
     """Ring strokes around every island; with ``fill`` the rings continue until they leave the tray."""
     step, rake = garden.planner.sample_step, garden.rake
-    tray = tray_box(garden)
+    tray = sand_region(garden)
     strokes: list[Stroke] = []
     # Smaller islands first, the dominant island last so its rings win at shared seams.
     for island in sorted(isl, key=lambda i: i.hull.area):
@@ -205,9 +207,14 @@ def frame_centreline(garden: Garden) -> np.ndarray:
     early there; a frame raked last gives the pattern a clean border instead of crescents."""
     wc, lat, rake = garden.planner.wall_clearance, head_lateral_half(garden), garden.rake
     inset = wc + lat + SLACK
-    rect = tray_box(garden).buffer(-inset, join_style="mitre")
+    region = sand_region(garden)
+    rect = region.buffer(-inset, join_style="mitre" if not garden.sand_outline else "round")
     r = rake.min_radius_soft + 20.0
-    rounded = orient(rect.buffer(-r, join_style="mitre").buffer(r, quad_segs=QUAD_SEGS), sign=-1.0)
+    # Opening rounds convex corners to radius r, the closing after it rounds concave ones.
+    rounded = rect.buffer(-r, join_style="mitre").buffer(2 * r, quad_segs=QUAD_SEGS).buffer(-r, quad_segs=QUAD_SEGS)
+    if rounded.geom_type == "MultiPolygon":
+        rounded = max(rounded.geoms, key=lambda g: g.area)
+    rounded = orient(rounded, sign=-1.0)
     xy = np.asarray(rounded.exterior.coords)[:-1]
     i0 = int(np.argmax(xy[:, 1] - 1e-3 * xy[:, 0]))          # north edge, west end
     xy = np.vstack([xy[i0:], xy[:i0], xy[i0:i0 + 1]])
@@ -217,10 +224,14 @@ def frame_centreline(garden: Garden) -> np.ndarray:
 def frame_zone(garden: Garden) -> Polygon:
     """The band the frame pass rakes, from the walls to its inner tine edge."""
     inner = Polygon(frame_centreline(garden)).buffer(-garden.rake.tine_half, quad_segs=QUAD_SEGS)
-    return tray_box(garden).difference(inner)
+    return sand_region(garden).difference(inner)
 
 
-def _with_frame(strokes: list[Stroke], garden: Garden, frame: bool) -> list[Stroke]:
+def _with_frame(strokes: list[Stroke], garden: Garden, frame: bool | None) -> list[Stroke]:
+    """Add the border pass. ``None`` means: yes for an organic sand outline (a frame that
+    follows its edge replaces the ragged ends straight lanes leave there), no for a tray."""
+    if frame is None:
+        frame = bool(garden.sand_outline)
     if not frame:
         return strokes
     zone, half = frame_zone(garden), garden.rake.tine_half
@@ -233,7 +244,7 @@ def _with_frame(strokes: list[Stroke], garden: Garden, frame: bool) -> list[Stro
 
 
 # --------------------------------------------------------------------------- patterns
-def lines(garden: Garden, rings: int | None = None, frame: bool = False) -> list[Stroke]:
+def lines(garden: Garden, rings: int | None = None, frame: bool | None = None) -> list[Stroke]:
     """Straight lanes along the long axis, stones ringed as islands."""
     isl = islands(garden, rings)
     zones = [i.zone for i in isl if i.rings > 0]
@@ -246,8 +257,8 @@ def lines(garden: Garden, rings: int | None = None, frame: bool = False) -> list
     return _with_frame(strokes + island_rings(garden, isl), garden, frame)
 
 
-def waves(garden: Garden, wavelength: float = 400.0, amplitude: float = 12.0,
-          phase_deg: float = 0.0, rings: int | None = None, frame: bool = False) -> list[Stroke]:
+def waves(garden: Garden, wavelength: float | None = None, amplitude: float | None = None,
+          phase_deg: float = 0.0, rings: int | None = None, frame: bool | None = None) -> list[Stroke]:
     """Parallel sine lanes (all in phase), stones ringed as islands.
 
     Each lane is the previous one shifted in y, not a true parallel curve (true parallels of
@@ -255,6 +266,10 @@ def waves(garden: Garden, wavelength: float = 400.0, amplitude: float = 12.0,
     neighbouring lanes shrinks to lane_spacing * cos(slope) - span. The planner reports it.
     """
     rake = garden.rake
+    # Defaults scale with the rake: 3.2 lane spacings per wave, ~a tenth of one as amplitude
+    # (400 mm and 12 mm for the 125 mm lanes of the tray study).
+    wavelength = 3.2 * rake.lane_spacing if wavelength is None else wavelength
+    amplitude = 0.096 * rake.lane_spacing if amplitude is None else amplitude
     r_min = wavelength**2 / (4 * math.pi**2 * amplitude) if amplitude > 0 else math.inf
     if r_min < rake.min_radius_hard:
         raise PatternError(
@@ -282,11 +297,14 @@ def ripples(garden: Garden, frame: bool = True) -> list[Stroke]:
 
 def open_centre(garden: Garden, frame: bool = False) -> tuple[float, float]:
     """The point of the tray farthest from walls and ring zones (pole of inaccessibility)."""
-    region = tray_box(garden)
-    if frame:
-        region = region.difference(frame_zone(garden))
+    sand = sand_region(garden)
+    region = sand.difference(frame_zone(garden)) if frame else sand
     for island in islands(garden):
         region = region.difference(island.zone)
+    if region.is_empty:
+        # Small gardens: the frame and ring zones cover everything. Centre the spiral in the
+        # sand that is free of stones instead; the rings will overwrite what they cover.
+        region = sand.difference(unary_union([i.hull.buffer(garden.planner.stone_clearance) for i in islands(garden)]))
     if region.geom_type == "MultiPolygon":
         region = max(region.geoms, key=lambda g: g.area)
     c = polylabel(region, tolerance=1.0)
@@ -303,8 +321,8 @@ def spiral(garden: Garden, centre: tuple[float, float] | None = None,
         raise PatternError(f"spiral start radius {r0:g} mm is below the rake's hard limit "
                            f"{rake.min_radius_hard:g} mm")
     b = rake.lane_spacing / (2 * math.pi)
-    corners = np.array([[0, 0], [garden.tray.width, 0], [0, garden.tray.depth],
-                        [garden.tray.width, garden.tray.depth]])
+    bx0, by0, bx1, by1 = sand_region(garden).bounds
+    corners = np.array([[bx0, by0], [bx1, by0], [bx0, by1], [bx1, by1]])
     r_max = np.hypot(corners[:, 0] - cx, corners[:, 1] - cy).max() + rake.lane_spacing
     theta = np.linspace(0, (r_max - r0) / b, int((r_max - r0) / b * 400) + 2)
     r = r0 + b * theta
@@ -312,7 +330,7 @@ def spiral(garden: Garden, centre: tuple[float, float] | None = None,
     isl = islands(garden, rings)
     zones = [i.zone for i in isl if i.rings > 0]
     # Only propose the part of the spiral the rake band can reach inside the walls.
-    reach = tray_box(garden).buffer(-(garden.planner.wall_clearance + rake.tine_half))
+    reach = sand_region(garden).buffer(-(garden.planner.wall_clearance + rake.tine_half))
     inside = shapely.contains_xy(reach, xy[:, 0], xy[:, 1])
     pieces = [xy[a:b] for a, b in split_runs(inside) if b - a >= 2]
     strokes = []

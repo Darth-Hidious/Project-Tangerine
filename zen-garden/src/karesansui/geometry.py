@@ -132,6 +132,13 @@ def tray_box(garden: Garden) -> Polygon:
     return box(0.0, 0.0, garden.tray.width, garden.tray.depth)
 
 
+def sand_region(garden: Garden) -> Polygon:
+    """The rakeable area: the sand outline if the garden has one, otherwise the whole tray."""
+    if garden.sand_outline:
+        return Polygon(garden.sand_outline).buffer(0)
+    return tray_box(garden)
+
+
 def stone_polygons(garden: Garden) -> list[Polygon]:
     return [Polygon(s.outline) for s in garden.stones]
 
@@ -144,7 +151,7 @@ def stone_union(garden: Garden):
 def allowed_region(garden: Garden):
     """Where any part of the head may be: inside the walls and clear of every stone."""
     p = garden.planner
-    region = tray_box(garden).buffer(-p.wall_clearance, join_style="mitre")
+    region = sand_region(garden).buffer(-p.wall_clearance, join_style="mitre")
     stones = stone_union(garden)
     if not stones.is_empty:
         region = region.difference(stones.buffer(p.stone_clearance))
@@ -155,7 +162,7 @@ def free_space(garden: Garden):
     """Where the head's rotation axis may be while it turns freely (the whole swing circle is clear)."""
     p = garden.planner
     r = swing_radius(garden.rake, garden.screed)
-    region = tray_box(garden).buffer(-(p.wall_clearance + r), join_style="mitre")
+    region = sand_region(garden).buffer(-(p.wall_clearance + r), join_style="mitre")
     stones = stone_union(garden)
     if not stones.is_empty:
         region = region.difference(stones.buffer(p.stone_clearance + r))

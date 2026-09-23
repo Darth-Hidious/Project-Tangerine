@@ -154,6 +154,78 @@ class PlannerCfg:
 
 
 @dataclass(frozen=True)
+class Feature:
+    """A non-sand element of the layout. Drawn, and an obstacle for the arm if it is tall."""
+    name: str
+    kind: str                                   # stream | pool | rock | bridge | bay | reservoir
+    outline: tuple[tuple[float, float], ...]    # polygon, or the centre line of a stream
+    height: float = 0.0                         # top above the sand surface
+    width: float = 0.0                          # stream width (centre-line features only)
+
+
+@dataclass(frozen=True)
+class Lantern:
+    name: str
+    xy: tuple[float, float]
+    radius: float = 28.0          # footprint
+    height: float = 120.0         # overall height above the sand surface
+    light_height: float = 70.0    # LED in the firebox, above the sand surface
+    lumens: float = 60.0
+    cct: float = 2200.0
+
+
+@dataclass(frozen=True)
+class ScaraCfg:
+    """Two horizontal links, a vertical lift at the elbow end, and a yaw joint for the rake head."""
+    link1: float = 230.0
+    link2: float = 230.0
+    link_height: float = 175.0    # underside of the links above the sand surface
+    lift: float = 110.0           # vertical stroke of the tool carriage
+    j1_limits: tuple[float, float] = (-170.0, 170.0)
+    j2_limits: tuple[float, float] = (-150.0, 150.0)
+    link1_mass: float = 0.40      # kg, for torque estimates
+    link2_mass: float = 0.30
+    tool_mass: float = 0.35       # lift carriage + yaw motor + rake head
+
+
+@dataclass(frozen=True)
+class ArticulatedCfg:
+    """Base yaw, shoulder and elbow pitch, a wrist pitch that keeps the tool vertical, wrist yaw."""
+    shoulder_height: float = 150.0   # shoulder axis above the sand surface
+    upper: float = 250.0
+    fore: float = 250.0
+    wrist_drop: float = 90.0         # wrist pitch axis above the skid sole
+    j1_limits: tuple[float, float] = (-170.0, 170.0)
+    j2_limits: tuple[float, float] = (-10.0, 120.0)    # shoulder, from horizontal, up positive
+    j3_limits: tuple[float, float] = (-160.0, 0.0)     # elbow, relative to the upper arm
+    upper_mass: float = 0.45
+    fore_mass: float = 0.35
+    tool_mass: float = 0.35
+
+
+@dataclass(frozen=True)
+class Arm:
+    kind: str = "scara"                          # "scara" | "articulated"
+    base: tuple[float, float] = (640.0, 225.0)
+    base_radius: float = 45.0
+    zero_deg: float = 180.0                      # tray-frame direction of base-yaw zero (the middle of its range)
+    scara: ScaraCfg = field(default_factory=ScaraCfg)
+    articulated: ArticulatedCfg = field(default_factory=ArticulatedCfg)
+    travel_lift: float = 85.0        # skid sole above the sand surface while travelling
+
+
+@dataclass(frozen=True)
+class Water:
+    area_m2: float = 0.0             # open water surface; 0 = measure it from the stream and pool
+    reservoir_l: float = 2.0
+    usable_fraction: float = 0.5     # share of the reservoir the pump can draw before it runs dry
+    flow_lpm: float = 1.0            # pumped flow
+    lift_mm: float = 80.0            # reservoir surface to the stream source
+    tube_id_mm: float = 6.0
+    tube_len_m: float = 0.7
+
+
+@dataclass(frozen=True)
 class Garden:
     tray: Tray = field(default_factory=Tray)
     stones: tuple[Stone, ...] = ()
@@ -163,6 +235,11 @@ class Garden:
     lighting: Lighting = field(default_factory=Lighting)
     gantry: Gantry = field(default_factory=Gantry)
     planner: PlannerCfg = field(default_factory=PlannerCfg)
+    sand_outline: tuple[tuple[float, float], ...] = ()   # empty: the whole tray is sand
+    features: tuple[Feature, ...] = ()
+    lanterns: tuple[Lantern, ...] = ()
+    arm: Arm | None = None                               # None: the gantry machine
+    water: Water | None = None
 
 
 def _build(cls, table: dict | None):
@@ -188,7 +265,21 @@ def load_garden(path: str | Path) -> Garden:
         for s in doc.get("stones", [])
     )
     light_doc = dict(doc.get("lighting", {}))
-    strips = tuple(_build(LightStrip, s) for s in light_doc.pop("strips", [])) or Lighting().strips
+    if "strips" in light_doc:                    # an explicit empty list means: no rim strips
+        strips = tuple(_build(LightStrip, s) for s in light_doc.pop("strips"))
+    else:
+        strips = Lighting().strips
+    arm = None
+    if "arm" in doc:
+        arm_doc = dict(doc["arm"])
+        scara = _build(ScaraCfg, _tuples(arm_doc.pop("scara", {})))
+        artic = _build(ArticulatedCfg, _tuples(arm_doc.pop("articulated", {})))
+        arm = Arm(scara=scara, articulated=artic, **_tuples(arm_doc))
+    features = tuple(
+        Feature(name=f["name"], kind=f["kind"], outline=tuple((float(x), float(y)) for x, y in f["outline"]),
+                height=float(f.get("height", 0.0)), width=float(f.get("width", 0.0)))
+        for f in doc.get("features", [])
+    )
     return Garden(
         tray=_build(Tray, doc.get("tray")),
         stones=stones,
@@ -198,11 +289,27 @@ def load_garden(path: str | Path) -> Garden:
         lighting=Lighting(strips=strips, **light_doc),
         gantry=_build(Gantry, doc.get("gantry")),
         planner=_build(PlannerCfg, doc.get("planner")),
+        sand_outline=tuple((float(x), float(y)) for x, y in doc.get("sand", {}).get("outline", [])),
+        features=features,
+        lanterns=tuple(_build(Lantern, _tuples(l)) for l in doc.get("lanterns", [])),
+        arm=arm,
+        water=_build(Water, doc["water"]) if "water" in doc else None,
     )
 
 
-DEFAULT_CONFIG = Path(__file__).resolve().parents[2] / "configs" / "garden.toml"
+def _tuples(table: dict) -> dict:
+    """TOML arrays arrive as lists; frozen dataclasses want tuples."""
+    return {k: tuple(v) if isinstance(v, list) else v for k, v in dict(table).items()}
+
+
+CONFIG_DIR = Path(__file__).resolve().parents[2] / "configs"
+DEFAULT_CONFIG = CONFIG_DIR / "garden.toml"      # the first study: a 120 x 80 cm gravel tray and a gantry
+POC_CONFIG = CONFIG_DIR / "poc.toml"             # the proof of concept: a 70 x 45 cm table garden with an arm
 
 
 def default_garden() -> Garden:
     return load_garden(DEFAULT_CONFIG)
+
+
+def poc_garden() -> Garden:
+    return load_garden(POC_CONFIG)

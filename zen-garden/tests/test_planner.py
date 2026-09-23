@@ -118,3 +118,43 @@ def test_stone_against_the_wall_is_planned_around():
     prog = build_program(garden, "lines")
     assert prog.report.collisions == 0
     assert prog.report.ok
+
+
+# --------------------------------------------------------------------------- proof of concept (arm)
+from karesansui.config import poc_garden
+from karesansui.planner import ArmMachine
+
+
+@pytest.fixture(scope="module")
+def poc():
+    return poc_garden()
+
+
+@pytest.mark.parametrize("kind", ["scara", "articulated"])
+@pytest.mark.parametrize("pattern", PATTERNS)
+def test_poc_patterns_plan_for_both_arms(poc, kind, pattern):
+    prog = build_program(poc, pattern, machine=ArmMachine(poc, kind))
+    r = prog.report
+    assert r.ok, r.errors
+    assert r.collisions == 0 and r.poses_checked > 2_000
+    assert r.coverage > 0.8
+    assert r.min_radius_mm >= poc.rake.min_radius_hard
+
+
+def test_poc_travel_lifts_over_everything_in_reach(poc):
+    machine = ArmMachine(poc, "scara")
+    assert machine.obstacle_clearance() == []
+    prog = build_program(poc, "lines", machine=machine)
+    for step in prog.steps:
+        if isinstance(step, Travel):
+            assert step.z[0] <= step.z.max() and step.z[1:-1].min() == pytest.approx(machine.z_travel)
+            # Every travel waypoint is a reachable arm configuration that reproduces the pose.
+            back = machine.arm.fk(step.joints)
+            assert np.allclose(back[:, :2], step.poses[:, :2], atol=1e-6)
+
+
+def test_obstacle_taller_than_the_lift_is_reported(poc):
+    tall = dataclasses.replace(poc.lanterns[1], height=150.0)
+    garden = dataclasses.replace(poc, lanterns=(poc.lanterns[0], tall))
+    msgs = ArmMachine(garden, "scara").obstacle_clearance()
+    assert len(msgs) == 1 and "front-right lantern" in msgs[0]

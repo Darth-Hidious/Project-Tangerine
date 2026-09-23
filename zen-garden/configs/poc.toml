@@ -1,0 +1,207 @@
+# Proof-of-concept table garden: 70 x 45 cm, a fine-sand bed raked by an arm, a pumped
+# stream with living moss, preserved moss on the dry ground, two lanterns.
+#
+# Units: mm. Origin: inner front-left corner, x to the right, y away from the viewer (who sits
+# in front, at y < 0). Heights of features are above the sand surface.
+# Everything here is a design proposal to be replaced by measurements once parts exist.
+
+[tray]                   # the unit's inner footprint
+width = 700.0
+depth = 450.0
+wall_height = 60.0
+bed_depth = 25.0         # fine sand needs far less depth than gravel: grooves are ~2-4 mm
+
+[sand]
+outline = [
+    [279, 63], [291, 60], [302, 57], [314, 55], [326, 53],
+    [339, 51], [352, 50], [365, 50], [378, 50], [392, 50],
+    [405, 51], [418, 53], [430, 55], [441, 58], [452, 62],
+    [463, 66], [473, 71], [482, 76], [491, 83], [498, 90],
+    [505, 98], [510, 107], [515, 118], [519, 129], [522, 141],
+    [523, 154], [525, 167], [526, 181], [526, 195], [526, 209],
+    [525, 223], [524, 238], [522, 252], [520, 268], [517, 282],
+    [514, 295], [509, 308], [505, 320], [499, 332], [494, 343],
+    [487, 353], [480, 362], [472, 371], [463, 378], [454, 384],
+    [443, 390], [432, 395], [420, 398], [407, 401], [393, 402],
+    [380, 403], [367, 404], [354, 403], [341, 402], [329, 401],
+    [317, 399], [306, 396], [294, 392], [284, 388], [275, 382],
+    [267, 375], [259, 367], [253, 358], [248, 348], [243, 336],
+    [240, 324], [237, 311], [235, 298], [233, 285], [231, 272],
+    [230, 259], [230, 245], [230, 232], [230, 218], [231, 205],
+    [231, 191], [232, 178], [233, 165], [234, 153], [235, 141],
+    [236, 128], [236, 117], [239, 106], [242, 96], [247, 87],
+    [253, 80], [261, 73], [269, 68],
+]
+
+[grit]
+name = "white quartz sand 0.1-0.5 mm, washed"
+repose_deg = 33.0        # Phase 0: funnel-cone test (dry fine quartz sand is typically 30-35 deg)
+bulk_density = 1450.0
+grain_mm = 0.3
+albedo = 0.60
+
+[rake]                   # a small floating comb on the arm's wrist
+n_tines = 9
+pitch = 8.0
+tine_width = 2.5         # 2.5 mm stainless pins
+depth = 5.0
+bar_margin = 2.0
+bar_thickness = 8.0
+skid_gap = 6.0
+skid_length = 22.0
+skid_width = 16.0
+hang = 15.0
+float_travel = 25.0
+mode = "skid"
+
+[screed]
+width = 76.0
+overlap = 8.0
+thickness = 4.0
+
+[gantry]                 # motion limits of whatever carries the head (here: the arm, in Cartesian terms)
+rapid_speed = 100.0
+rake_speed = 20.0
+screed_speed = 25.0
+z_speed = 15.0
+a_speed = 120.0
+accel = 300.0
+junction_deviation = 0.02
+travel_clearance = 15.0
+rake_clearance = 8.0
+
+[planner]
+wall_clearance = 3.0     # from the edge of the sand
+stone_clearance = 6.0
+sample_step = 1.0
+min_stroke = 20.0
+closed_overlap = 30.0
+
+[lighting]
+ambient_lux = 150.0      # evening room light; the lanterns do the raking light
+strips = []
+
+[arm]
+kind = "scara"
+base = [640.0, 225.0]
+base_radius = 45.0
+zero_deg = 180.0         # base-yaw range centred on the sand (to the left of the base)
+travel_lift = 100.0      # clears the 70 mm stone and the 90 mm lanterns
+
+[arm.scara]
+link1 = 230.0
+link2 = 230.0
+link_height = 175.0
+lift = 110.0
+
+[arm.articulated]
+shoulder_height = 150.0
+upper = 250.0
+fore = 250.0
+wrist_drop = 90.0
+
+[water]
+reservoir_l = 2.0
+usable_fraction = 0.5
+flow_lpm = 1.0
+lift_mm = 80.0
+tube_id_mm = 6.0
+tube_len_m = 0.7
+
+[[lanterns]]              # 90 mm tall so a 100 mm travel lift clears everything the arm can reach
+name = "back-left lantern"
+xy = [205.0, 418.0]
+height = 90.0
+light_height = 55.0
+[[lanterns]]
+name = "front-right lantern"
+xy = [560.0, 48.0]
+height = 90.0
+light_height = 55.0
+
+[[stones]]                # the two stones are closer than the head's width, so they are ringed as one pair
+name = "main stone"
+group = "pair"
+rings = 1
+height = 70.0
+outline = [[372, 256], [381, 240], [402, 236], [424, 242], [431, 262],
+           [420, 279], [396, 284], [378, 276]]
+
+[[stones]]
+name = "small stone"
+group = "pair"
+rings = 1
+height = 30.0
+outline = [[334, 166], [341, 157], [355, 155], [367, 163], [366, 176], [352, 182], [338, 178]]
+
+[[features]]
+name = "stream"
+kind = "stream"
+width = 40.0
+height = -15.0
+outline = [
+    [62, 428], [88, 372], [58, 305], [112, 240], [92, 172],
+    [126, 118], [118, 92],
+]
+
+[[features]]
+name = "pool"
+kind = "pool"
+height = -25.0
+outline = [
+    [194, 62], [196, 71], [192, 79], [182, 87],
+    [166, 93], [146, 98], [126, 101], [106, 102],
+    [89, 101], [75, 98], [63, 93], [53, 87],
+    [44, 79], [36, 71], [30, 62], [28, 53],
+    [32, 45], [42, 37], [58, 31], [78, 26],
+    [98, 23], [118, 22], [135, 23], [149, 26],
+    [161, 31], [171, 37], [180, 45], [188, 53],
+]
+
+[[features]]
+name = "bridge"
+kind = "bridge"
+height = 30.0
+outline = [
+    [70, 226], [150, 256], [142, 276], [62, 246],
+]
+
+[[features]]
+name = "stream rock 1"
+kind = "rock"
+height = 25.0
+outline = [
+    [40, 300], [58, 292], [70, 305], [62, 320], [44, 318],
+]
+
+[[features]]
+name = "stream rock 2"
+kind = "rock"
+height = 25.0
+outline = [
+    [150, 128], [170, 120], [182, 134], [171, 148], [152, 143],
+]
+
+[[features]]
+name = "stream rock 3"
+kind = "rock"
+height = 25.0
+outline = [
+    [20, 402], [38, 392], [52, 405], [40, 420], [22, 416],
+]
+
+[[features]]
+name = "electronics bay (drawer, under the dry side)"
+kind = "bay"
+height = -60.0
+outline = [
+    [575, 5], [695, 5], [695, 445], [575, 445],
+]
+
+[[features]]
+name = "reservoir (under the pool)"
+kind = "reservoir"
+height = -60.0
+outline = [
+    [8, 8], [232, 8], [232, 170], [8, 170],
+]
