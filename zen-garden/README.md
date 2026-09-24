@@ -5,6 +5,7 @@ stream, a bonsai, three lanterns) with a bed of fine white sand that an arm buil
 rakes. Everything the build plan claims is computed here and can be re-run.
 
 - **[PLAN.md](PLAN.md)**: what to build, why, in what order, and what is still unknown.
+- **[BOM.md](BOM.md)**: the bill of materials, line by line, with the quantities computed from the model ([docs/bom.csv](docs/bom.csv) for a spreadsheet).
 - **[docs/garden3d.html](docs/garden3d.html)**: the garden in 3D. Open it in a browser (it needs WebGL 2, and loads Three.js from jsDelivr) to watch the arm erase and rake each pattern along its planned path.
 - **[docs/renders/](docs/renders/)**: photoreal renders of the same model, made with Blender Cycles.
 - **This file**: how to run the twin and what each part does.
@@ -35,6 +36,7 @@ python experiments/comb_study.py  # comb width and stone placement vs pattern va
 python experiments/erase_study.py # 40 erase-and-rake cycles: does sand pile up? (about two minutes)
 python experiments/export_3d.py   # rebuild the 3D viewer from the model (about a minute)
 python experiments/export_render_scene.py    # the model as a bundle for the photoreal renderer (seconds)
+python experiments/bom.py         # the bill of materials, quantities from the model: BOM.md, docs/bom.csv (seconds)
 python render/garden_cycles.py --views front,evening,stream,sand,arm,tree --quality preview
                                   # photoreal renders on the CPU; needs `pip install bpy==5.0.1` (Python 3.11)
 render/colab_render.sh            # the same at final quality on a Colab GPU (see "Rendering on Colab")
@@ -68,7 +70,7 @@ pytest                            # the checks listed below (about a minute)
 | `viewer/garden3d.template.html` | The Three.js viewer; `export_3d.py` inlines the model's data into it as `docs/garden3d.html` |
 | `render/garden_cycles.py` | The photoreal renderer: builds the exported model in Blender and renders it with Cycles |
 | `render/colab_render.sh`, `colab_job.py`, `colab_login.py` | The same render on a Colab GPU through Google's Colab CLI, and a two-step sign-in for headless machines |
-| `experiments/` | `poc_run.py` (the whole garden, end to end), `arm_study.py` (which arm, which drives), `comb_study.py` (pattern variety), `erase_study.py` (sand over many cycles), `export_3d.py` (the 3D viewer), `export_render_scene.py` (the bundle for the renderer) |
+| `experiments/` | `poc_run.py` (the whole garden, end to end), `arm_study.py` (which arm, which drives), `comb_study.py` (pattern variety), `erase_study.py` (sand over many cycles), `export_3d.py` (the 3D viewer), `export_render_scene.py` (the bundle for the renderer), `bom.py` (the bill of materials) |
 | `docs/` | `poc_results.json`, `arm_study.json`, `comb_study.json`, `erase_study.json` and `figures/`, all written by the experiments |
 
 ## What the tests pin down

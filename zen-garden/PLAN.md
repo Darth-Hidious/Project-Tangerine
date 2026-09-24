@@ -228,9 +228,10 @@ What follows from it:
 
 ### 4.1 Mechanics
 
-- **Base (q1) and elbow (q2).** NEMA17 steppers, each with a 20T:100T GT2 belt (5:1) and a pair of preloaded bearings per joint. The elbow motor sits at the base and drives through the upper link, which keeps the links light.
+- **Base (q1) and elbow (q2).** NEMA17 steppers, each with a 5:1 GT2 belt (16T:80T; 100T pulleys are rarely stocked) and a pair of preloaded bearings per joint. The elbow motor sits at the base and drives through the upper link, which keeps the links light.
 - **Lift (z).**
   - A small stepper on a T8 lead screw (or a belt), with 110 mm of stroke: z = 0 is the latched blade on the sand, 100 mm is travel height.
+  - It runs on a linear guide (an MGN9 rail, or two 8 mm rods with bushings), to be chosen in CAD.
   - Link undersides sit 175 mm above the sand, above the 90 mm lanterns and the stones (the taller stands 45 mm above the sand).
 - **Hard stops.** Pins or blocks on the base and elbow at the joint limits (−103° to −8°, and 58° to 150°). They're what keeps the arm off the tree even if the software goes wrong.
 - **Tool yaw (q4).**
@@ -248,7 +249,7 @@ What follows from it:
 
 ### 4.2 Electronics and control
 
-- **Controller.** An ESP32 board running FluidNC with at least four TMC2209 drivers, for example V1 Engineering's Jackpot or Bart Dring's 6-Pack. Check the current specifications before buying.
+- **Controller.** An ESP32 board running FluidNC with at least four TMC2209-class drivers, for example V1 Engineering's Jackpot3 (six TMC2226, a near-identical successor) or Bart Dring's 6-Pack. Check the current specifications before buying.
   - FluidNC supports G93 inverse-time feed, M62–M68 and A/B/C axes. This was checked in its `GCode.cpp`.
   - TMC2209 StealthChop keeps the steppers quiet.
 - **Axes.** X = q1, Y = q2, Z = lift, A = yaw, in degrees and millimetres.
@@ -280,20 +281,42 @@ What follows from it:
 - **Stream bed.** Built from stones and glazed pieces set in the liner.
 - **Sand.** Washed quartz sand, so there are no fines to raise dust.
 
+### 4.4 Ready for CAD?
+
+**The layout is; the mechanisms are not yet.**
+
+- **Ready:** everything the model fixes, as numbers in `configs/poc.toml` or computed from it:
+  - the tray (700 × 450 mm, frame 55 mm above the base) and the sand basin's outline and 25 mm depth;
+  - the terrain (a 1 mm heightfield), the stream's outline, levels and falls, and the rocks, stones and lanterns;
+  - the arm's base position, link lengths (230 + 230 mm), link height (175 mm), stroke (110 mm) and joint limits;
+  - the head's skid, comb and blade;
+  - the reservoir's size and the pump duty.
+- **Still to decide in CAD** (the BOM marks these):
+  - *Joints:* bearing sizes, shafts, preload and housings.
+  - *Drives:* pulley centre distances and belt lengths, including the elbow belt through link 1, and the tensioners.
+  - *Lift:* its guide, where it sits at the end of link 2, and how the yaw motor and slip ring mount beside it.
+  - *Links:* their sections. The twin assumes rigid links, so the aluminium bar needs a stiffness check against the 0.26 mm line-wobble budget (§3.1).
+  - *Hard stops:* their geometry.
+  - *Head:* the slide and the latch mechanism.
+  - *Tray:* board thickness and joinery, how the liner and the sand basin are built, drainage to the reservoir, and the drawer.
+  - *Electronics:* cable routes and the enclosure.
+- **Measure first:** the Phase 0 bench numbers (rake drag, the sand's angle of repose) set the lift and base loads; the twin's values are estimates.
+
 ## 5. Bill of materials
 
-Rough estimates in euros from typical hobby prices. **Not checked against current listings: verify before buying.**
+The line-item BOM is in **[BOM.md](BOM.md)** (and [docs/bom.csv](docs/bom.csv)). `experiments/bom.py` generates it from `configs/poc.toml` and the terrain model, so the quantities follow the design: sand, moss areas, fill, liner, tube, board lengths, links. Its prices are estimates, not quotes: a few were checked against current listings and are marked, the rest are typical hobby prices. **Roughly €520–1,340 before shipping.**
 
-| Group | Items | Estimate |
-|---|---|---|
-| Arm drives | 4 × NEMA17 (or NEMA14 for yaw and lift), GT2 belts and 20T/100T pulleys, T8 lead screw and nut, 8 bearings | €90–160 |
-| Arm structure | Walnut and aluminium flat bar for links and column, fasteners, 3D-printed or turned hubs | €40–90 |
-| Head | Linear slide, stainless pins, POM skid, blade, micro servo, 6-circuit slip ring, hall sensor | €30–60 |
-| Control | ESP32 FluidNC board with TMC2209 drivers, 3 limit switches, 24 V adapter (60–100 W), 12 V buck, wiring | €80–180 |
-| Water | 12 V DC pump with adjuster, float switch, leak sensor, silicone tube, sponge filter, reservoir, EPDM or epoxy | €50–100 |
-| Garden | Washed white sand (5 kg), two stones, stream and cascade rocks, soil for the hill, living and preserved moss, three small lanterns with 2200 K LEDs, grow light (your own bonsai) | €90–200 |
-| Tray | Walnut boards, plywood base, sealant and finish | €80–200 |
-| **Total** | | **roughly €460–990**, most of the spread being the wood |
+| Group | Estimate |
+|---|---|
+| Arm drives: 4 steppers, 5:1 and 3:1 GT2 drives, lead screw, lift guide, bearings, hard stops | €108–257 |
+| Arm structure: walnut and aluminium links, column, hubs, fasteners | €57–140 |
+| Head: slide, pins, skid, blade, latch servo, slip ring, hall index | €24–62 |
+| Control: FluidNC board, 24 V adapter, 12 V buck, limit switches, wiring | €106–199 |
+| Water: pump, reservoir, tube, float switch, leak sensor, filter, liner | €32–86 |
+| Garden: sand, living and preserved moss, fill, stones, rocks, lanterns and LEDs, grow light | €110–387 |
+| Tray: walnut frame, plywood base, sand basin, sealant and finish, drawer | €83–210 |
+
+The moss is most of the spread: it is priced per square metre of the model's areas (0.05 m² living, 0.16 m² preserved), and moss prices vary widely.
 
 ## 6. Phases and exit criteria
 
