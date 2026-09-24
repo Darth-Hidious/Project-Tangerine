@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "rm -rf public && mkdir -p public/renders && cp zen-garden/docs/garden3d.html public/index.html && cp zen-garden/docs/renders/*.jpg public/renders/",
+  "outputDirectory": "public",
+  "cleanUrls": true
+}

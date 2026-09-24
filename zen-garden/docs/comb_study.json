@@ -1,0 +1,214 @@
+{
+ "9 tines, 76 mm blade (first design)": {
+  "lines": {
+   "ok": true,
+   "collisions": 0,
+   "pattern_share": 0.101,
+   "rake_m_by_kind": {
+    "frame": 0.83,
+    "lane": 0.166,
+    "ring": 0.652
+   },
+   "coverage": 0.834,
+   "erase_coverage": 0.921,
+   "min_radius_mm": 44.4
+  },
+  "waves": {
+   "ok": true,
+   "collisions": 0,
+   "pattern_share": 0.096,
+   "rake_m_by_kind": {
+    "frame": 0.83,
+    "lane": 0.157,
+    "ring": 0.652
+   },
+   "coverage": 0.834,
+   "erase_coverage": 0.921,
+   "min_radius_mm": 44.4
+  },
+  "ripples": {
+   "ok": true,
+   "collisions": 0,
+   "pattern_share": 0.0,
+   "rake_m_by_kind": {
+    "frame": 0.83,
+    "ring": 0.652
+   },
+   "coverage": 0.834,
+   "erase_coverage": 0.921,
+   "min_radius_mm": 44.4
+  },
+  "spiral": {
+   "ok": true,
+   "collisions": 0,
+   "pattern_share": 0.049,
+   "rake_m_by_kind": {
+    "frame": 0.83,
+    "ring": 0.652,
+    "spiral": 0.077
+   },
+   "coverage": 0.834,
+   "erase_coverage": 0.921,
+   "min_radius_mm": 44.4
+  }
+ },
+ "9 tines, stones moved back-right": {
+  "lines": {
+   "ok": true,
+   "collisions": 0,
+   "pattern_share": 0.161,
+   "rake_m_by_kind": {
+    "frame": 0.698,
+    "lane": 0.194,
+    "ring": 0.312
+   },
+   "coverage": 0.804,
+   "erase_coverage": 0.88,
+   "min_radius_mm": 44.4
+  },
+  "waves": {
+   "ok": true,
+   "collisions": 0,
+   "pattern_share": 0.165,
+   "rake_m_by_kind": {
+    "frame": 0.698,
+    "lane": 0.199,
+    "ring": 0.312
+   },
+   "coverage": 0.804,
+   "erase_coverage": 0.88,
+   "min_radius_mm": 44.4
+  },
+  "ripples": {
+   "ok": true,
+   "collisions": 0,
+   "pattern_share": 0.0,
+   "rake_m_by_kind": {
+    "frame": 0.698,
+    "ring": 0.548
+   },
+   "coverage": 0.805,
+   "erase_coverage": 0.88,
+   "min_radius_mm": 44.4
+  },
+  "spiral": {
+   "ok": true,
+   "collisions": 0,
+   "pattern_share": 0.084,
+   "rake_m_by_kind": {
+    "frame": 0.698,
+    "ring": 0.312,
+    "spiral": 0.093
+   },
+   "coverage": 0.79,
+   "erase_coverage": 0.88,
+   "min_radius_mm": 44.4
+  }
+ },
+ "5 tines, 44 mm blade (chosen)": {
+  "lines": {
+   "ok": true,
+   "collisions": 0,
+   "pattern_share": 0.372,
+   "rake_m_by_kind": {
+    "frame": 0.955,
+    "lane": 0.891,
+    "ring": 0.552
+   },
+   "coverage": 0.861,
+   "erase_coverage": 0.925,
+   "min_radius_mm": 28.5
+  },
+  "waves": {
+   "ok": true,
+   "collisions": 0,
+   "pattern_share": 0.373,
+   "rake_m_by_kind": {
+    "frame": 0.955,
+    "lane": 0.898,
+    "ring": 0.552
+   },
+   "coverage": 0.86,
+   "erase_coverage": 0.925,
+   "min_radius_mm": 28.5
+  },
+  "ripples": {
+   "ok": true,
+   "collisions": 0,
+   "pattern_share": 0.0,
+   "rake_m_by_kind": {
+    "frame": 0.955,
+    "ring": 1.464
+   },
+   "coverage": 0.865,
+   "erase_coverage": 0.925,
+   "min_radius_mm": 28.5
+  },
+  "spiral": {
+   "ok": true,
+   "collisions": 0,
+   "pattern_share": 0.35,
+   "rake_m_by_kind": {
+    "frame": 0.955,
+    "ring": 0.552,
+    "spiral": 0.813
+   },
+   "coverage": 0.827,
+   "erase_coverage": 0.925,
+   "min_radius_mm": 28.5
+  }
+ },
+ "5 tines, stones moved back-right": {
+  "lines": {
+   "ok": true,
+   "collisions": 0,
+   "pattern_share": 0.465,
+   "rake_m_by_kind": {
+    "frame": 0.832,
+    "lane": 1.033,
+    "ring": 0.358
+   },
+   "coverage": 0.844,
+   "erase_coverage": 0.91,
+   "min_radius_mm": 28.5
+  },
+  "waves": {
+   "ok": true,
+   "collisions": 0,
+   "pattern_share": 0.467,
+   "rake_m_by_kind": {
+    "frame": 0.832,
+    "lane": 1.044,
+    "ring": 0.358
+   },
+   "coverage": 0.844,
+   "erase_coverage": 0.91,
+   "min_radius_mm": 28.5
+  },
+  "ripples": {
+   "ok": true,
+   "collisions": 0,
+   "pattern_share": 0.0,
+   "rake_m_by_kind": {
+    "frame": 0.832,
+    "ring": 1.309
+   },
+   "coverage": 0.844,
+   "erase_coverage": 0.91,
+   "min_radius_mm": 28.5
+  },
+  "spiral": {
+   "ok": true,
+   "collisions": 0,
+   "pattern_share": 0.44,
+   "rake_m_by_kind": {
+    "frame": 0.832,
+    "ring": 0.358,
+    "spiral": 0.935
+   },
+   "coverage": 0.788,
+   "erase_coverage": 0.91,
+   "min_radius_mm": 28.5
+  }
+ }
+}

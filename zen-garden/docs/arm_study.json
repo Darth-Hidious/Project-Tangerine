@@ -1,0 +1,143 @@
+{
+  "scara": {
+    "joints": [
+      "q1 base",
+      "q2 elbow",
+      "z lift",
+      "q4 tool yaw"
+    ],
+    "joint_range_deg": [
+      [
+        -96.4,
+        -13.8
+      ],
+      [
+        63.7,
+        144.5
+      ],
+      [
+        8.0,
+        8.0
+      ],
+      [
+        83.0,
+        1625.9
+      ]
+    ],
+    "gravity_preloaded": [
+      false,
+      false,
+      true,
+      false
+    ],
+    "max_holding_load": [
+      0.0,
+      0.0,
+      3.433,
+      0.0
+    ],
+    "holding_load_units": [
+      "N m",
+      "N m",
+      "N",
+      "N m"
+    ],
+    "wobble_mm": {
+      "Hobby servo (STS3215)": {
+        "p50": 1.711,
+        "p95": 2.613,
+        "max": 2.949
+      },
+      "Smart servo (Dynamixel XM430)": {
+        "p50": 0.984,
+        "p95": 1.502,
+        "max": 1.695
+      },
+      "Stepper + 5:1 belt": {
+        "p50": 0.17,
+        "p95": 0.26,
+        "max": 0.293
+      },
+      "Harmonic drive": {
+        "p50": 0.114,
+        "p95": 0.173,
+        "max": 0.196
+      }
+    },
+    "base_torque_accel_plus_drag_Nm": 0.264
+  },
+  "articulated": {
+    "joints": [
+      "q1 base",
+      "q2 shoulder",
+      "q3 elbow",
+      "q4 wrist pitch",
+      "q5 tool yaw"
+    ],
+    "joint_range_deg": [
+      [
+        -34.6,
+        36.5
+      ],
+      [
+        30.4,
+        52.4
+      ],
+      [
+        -145.2,
+        -75.9
+      ],
+      [
+        -44.5,
+        2.9
+      ],
+      [
+        145.1,
+        2008.6
+      ]
+    ],
+    "gravity_preloaded": [
+      false,
+      true,
+      false,
+      false,
+      false
+    ],
+    "max_holding_load": [
+      0.0,
+      2.859,
+      0.902,
+      0.0,
+      0.0
+    ],
+    "holding_load_units": [
+      "N m",
+      "N m",
+      "N m",
+      "N m",
+      "N m"
+    ],
+    "wobble_mm": {
+      "Hobby servo (STS3215)": {
+        "p50": 2.328,
+        "p95": 2.66,
+        "max": 2.774
+      },
+      "Smart servo (Dynamixel XM430)": {
+        "p50": 1.362,
+        "p95": 1.568,
+        "max": 1.629
+      },
+      "Stepper + 5:1 belt": {
+        "p50": 0.24,
+        "p95": 0.279,
+        "max": 0.289
+      },
+      "Harmonic drive": {
+        "p50": 0.165,
+        "p95": 0.193,
+        "max": 0.199
+      }
+    }
+  }
+}
